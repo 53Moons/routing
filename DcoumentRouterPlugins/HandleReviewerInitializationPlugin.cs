@@ -29,7 +29,7 @@ namespace DcoumentRouterPlugins
                 return;
             try
             {
-                #region Parse RoutingStatus change
+                #region Parse Routing Status change
                 if (!context.PostEntityImages.TryGetValue("Image", out Entity postImage))
                     throw new Exception("Post Image is required.");
                 if (!context.PreEntityImages.TryGetValue("Image", out Entity preImage))
@@ -70,7 +70,7 @@ namespace DcoumentRouterPlugins
                 )
                     throw new Exception("Routing Type not found in Post Image");
 
-                #region GetReviewers
+                #region Get Reviewers
 
                 var reviewerQuery = new QueryExpression("cr8d2_documentrouterdecision")
                 {
