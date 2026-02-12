@@ -11,7 +11,7 @@ namespace DcoumentRouterPlugins
         private const int NotRouted = 905200000;
         private const int Serial = 905200000;
         private const int Parallel = 905200001;
-        private const string ActionTableName = "cr8d2_documentrouteractionitem";
+        private const int IsPending = 905200001;
 
         public HandleReviewerInitializationPlugin()
             : base(typeof(HandleReviewerInitializationPlugin))
@@ -115,20 +115,17 @@ namespace DcoumentRouterPlugins
                 // if parallel, bulk create "Action items"
                 if (postRoutingType.Value == Parallel)
                 {
-                    var actionItems = new EntityCollection();
+                    var updates = new EntityCollection();
                     foreach (var reviewer in reviewers.Entities)
                     {
-                        var actionItem = new Entity(ActionTableName)
-                        {
-                            ["cr8d2_reviewer"] = reviewer.ToEntityReference(),
-                            ["cr8d2_routingsummary"] = postImage.ToEntityReference()
-                        };
-                        actionItems.Entities.Add(actionItem);
+                        reviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+
+                        updates.Entities.Add(reviewer);
                     }
-                    var createRequest = new CreateMultipleRequest { Targets = actionItems };
+                    var updateRequest = new UpdateMultipleRequest { Targets = updates };
                     try
                     {
-                        sysService.Execute(createRequest);
+                        sysService.Execute(updateRequest);
                     }
                     catch (Exception ex)
                     {
@@ -142,14 +139,11 @@ namespace DcoumentRouterPlugins
                 else if (postRoutingType.Value == Serial)
                 {
                     var firstReviewer = reviewers.Entities[0];
-                    var actionItem = new Entity(ActionTableName)
-                    {
-                        ["cr8d2_reviewer"] = firstReviewer.ToEntityReference(),
-                        ["cr8d2_routingsummary"] = postImage.ToEntityReference()
-                    };
+                    firstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+
                     try
                     {
-                        sysService.Create(actionItem);
+                        sysService.Update(firstReviewer);
                     }
                     catch (Exception ex)
                     {
