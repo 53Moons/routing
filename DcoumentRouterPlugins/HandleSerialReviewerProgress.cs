@@ -3,7 +3,7 @@ using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using System;
 
-namespace DocumentRouterPlugins
+namespace DcoumentRouterPlugins
 {
     public class HandleSerialReviewerProgressPlugin : PluginBase
     {
@@ -22,9 +22,6 @@ namespace DocumentRouterPlugins
         private const int PendingInitiatorAction = 905200012;
         private const int SerialReviewPending = 905200003;
         private const string FlowStatus = "cr8d2_workflowstatus"; 
-
-        // Recursion Flag 
-        private const string RecursionFlag = "RecursionFlag";
 
         // Handle Reject Response
         private const int RejectedByReviewer = 905200006;
@@ -51,24 +48,14 @@ namespace DocumentRouterPlugins
             var tracer = localPluginContext.TracingService;
 
             tracer.Trace("StartSerialReviewerProgress");
-
-            // Check recursion flag to prevent infinite loops during updates
-            if (context.SharedVariables.ContainsKey(RecursionFlag) ||
-               (context.ParentContext != null && context.ParentContext.SharedVariables.ContainsKey(RecursionFlag)))
-            {
-                tracer.Trace("Recursion flag detected. Exiting.");
-                return;
-            }
-
+                        
             // Check stage is post operation 40
             if (context.MessageName != "Update" || context.Stage != 40)
                 return;
 
             try
             {
-                // Set recursion flag 
-                context.SharedVariables.Add(RecursionFlag, true);
-
+              
                 if (!context.PostEntityImages.TryGetValue("Image", out Entity postImage))
                     throw new Exception("Post Image is required.");
                 if (!context.PreEntityImages.TryGetValue("Image", out Entity preImage))
