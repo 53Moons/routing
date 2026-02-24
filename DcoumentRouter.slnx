@@ -1,5 +1,7 @@
 <Solution>
-  <Project Path="DcoumentRouterPlugins/DcoumentRouterPlugins.csproj" Id="a85bed39-a77e-436f-8638-799f6c841340" />
+  <Project Path="DcoumentRouterPlugins/DcoumentRouterPlugins.csproj" Id="a85bed39-a77e-436f-8638-799f6c841340">
+    <BuildType Project="Release" />
+  </Project>
   <Properties Name="CRMSolutionProperties">
     <Property Name="SolutionIsBoundToCRM" Value="True" />
   </Properties>
