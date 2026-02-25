@@ -67,7 +67,7 @@ namespace DcoumentRouterPlugins
 
                 #region Get Reviewers
 
-                var reviewerQuery = new QueryExpression("cr8d2_documentrouterdecision")
+                var reviewerQuery = new QueryExpression(ReviewerDistributionModel.ChildEntityName)
                 {
                     ColumnSet = new ColumnSet(true),
                     Criteria = new FilterExpression
@@ -75,7 +75,7 @@ namespace DcoumentRouterPlugins
                         Conditions =
                         {
                             new ConditionExpression(
-                                "cr8d2_routingsummary",
+                                ReviewerDistributionModel.ParentEntityName,
                                 ConditionOperator.Equal,
                                 postImage.Id
                             ),
@@ -86,7 +86,10 @@ namespace DcoumentRouterPlugins
                             )
                         }
                     },
-                    Orders = { new OrderExpression("cr8d2_order", OrderType.Ascending) }
+                    Orders =
+                    {
+                        new OrderExpression(ReviewerDistributionModel.SetOrder, OrderType.Ascending)
+                    }
                 };
                 EntityCollection reviewers;
                 try
@@ -113,7 +116,7 @@ namespace DcoumentRouterPlugins
                     var updates = new EntityCollection();
                     foreach (var reviewer in reviewers.Entities)
                     {
-                        reviewer["cr8d2_distributionstatus"] = new OptionSetValue(
+                        reviewer[ReviewerDistributionModel.DistStatus] = new OptionSetValue(
                             DistributionStatusModel.IsPending
                         );
                         reviewer["ownerid"] = reviewer.GetAttributeValue<EntityReference>(
@@ -139,7 +142,7 @@ namespace DcoumentRouterPlugins
                 else if (postRoutingType.Value == RoutingTypeModel.Serial)
                 {
                     var firstReviewer = reviewers.Entities[0];
-                    firstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(
+                    firstReviewer[ReviewerDistributionModel.DistStatus] = new OptionSetValue(
                         DistributionStatusModel.IsPending
                     );
                     firstReviewer["ownerid"] = firstReviewer.GetAttributeValue<EntityReference>(

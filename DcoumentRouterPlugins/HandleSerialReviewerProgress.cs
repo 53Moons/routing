@@ -87,12 +87,12 @@ namespace DcoumentRouterPlugins
 
                 // Get parent
                 var parentReference = postImage.GetAttributeValue<EntityReference>(
-                    ReviewerDistributionModel.ParentId
+                    ReviewerDistributionModel.ParentEntityName
                 );
                 if (parentReference == null)
                 {
                     throw new Exception(
-                        $"Parent routing summary lookup ({ReviewerDistributionModel.ParentId}) missing from distribution."
+                        $"Parent routing summary lookup ({ReviewerDistributionModel.ParentEntityName}) missing from distribution."
                     );
                 }
                 var parentEntity = sysService.Retrieve(
@@ -136,7 +136,7 @@ namespace DcoumentRouterPlugins
                             Conditions =
                             {
                                 new ConditionExpression(
-                                    ReviewerDistributionModel.ParentId,
+                                    ReviewerDistributionModel.ParentEntityName,
                                     ConditionOperator.Equal,
                                     parentReference.Id
                                 ),
