@@ -11,6 +11,7 @@ namespace DcoumentRouterPlugins.Models
     {
         public static int NotStarted = 905200000;
         public static int InProgress = 905200001;
+        public static int PendingInitiatorAction = 905200012;
         public static int Completed = 905200002;
         public static int Terminated = 905200015;
     }

@@ -10,5 +10,6 @@ namespace DcoumentRouterPlugins.Models
     {
         public static string RoutingStatus = "cr8d2_routingstatus";
         public static string RoutingType = "cr8d2_routingtype";
+        public static string FlowStatus = "cr8d2_workflowstatus";
     }
 }

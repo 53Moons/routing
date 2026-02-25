@@ -101,6 +101,7 @@
     <Compile Include="HandleSerialReviewerProgress.cs" />
     <Compile Include="Models\DistributionStatusModel.cs" />
     <Compile Include="Models\DocumentRouterModel.cs" />
+    <Compile Include="Models\RoutingStatusModel.cs" />
     <Compile Include="Models\RoutingTypeModel.cs" />
     <Compile Include="Models\WorkflowStatusModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
