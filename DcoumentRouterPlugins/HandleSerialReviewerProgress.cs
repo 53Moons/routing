@@ -1,4 +1,5 @@
-﻿using Microsoft.Xrm.Sdk;
+﻿using DcoumentRouterPlugins.Models;
+using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using System;
@@ -7,35 +8,6 @@ namespace DcoumentRouterPlugins
 {
     public class HandleSerialReviewerProgressPlugin : PluginBase
     {
-        // Distribution Status OptionSet Values
-        private const int NotStarted = 905200000;
-        private const int IsPending = 905200001;
-        private const int Complete = 905200002;
-        private const int Rejected = 905200005;
-        private const string DistStatus = "cr8d2_distributionstatus";
-
-        // Routing Status OptionSet Value
-        private const int ReviewComplete = 905000002;
-        private const string RoutStatus = "cr8d2_routingstatus";
-
-        // Workflow Status OptionSet Value
-        private const int PendingInitiatorAction = 905200012;
-        private const int SerialReviewPending = 905200003;
-        private const string FlowStatus = "cr8d2_workflowstatus";
-
-        // Handle Reject Response
-        private const int RejectedByReviewer = 905200006;
-        private const int WorkflowTerminated = 905200015;
-
-        // Entity References
-        private const string ParentEntityName = "cr8d2_routingsummary";
-        private const string ChildEntityName = "cr8d2_documentrouterdecision";
-        private const string ReviewerLookup = "cr8d2_distributionname";
-
-        // Handle Order
-        private const string ParentId = "cr8d2_routingsummaryid";
-        private const string SetOrder = "cr8d2_order";
-
         public HandleSerialReviewerProgressPlugin()
             : base(typeof(HandleSerialReviewerProgressPlugin))
         {
@@ -64,14 +36,14 @@ namespace DcoumentRouterPlugins
                 // Confirm distribution status in image
                 if (
                     !postImage.TryGetAttributeValue(
-                        DistStatus,
+                        ReviewerDistributionModel.DistStatus,
                         out OptionSetValue postDistributionStatus
                     )
                 )
                     throw new Exception("Distribution Status not in Post Image");
                 if (
                     !preImage.TryGetAttributeValue(
-                        DistStatus,
+                        ReviewerDistributionModel.DistStatus,
                         out OptionSetValue preDistributionStatus
                     )
                 )
@@ -79,10 +51,10 @@ namespace DcoumentRouterPlugins
 
                 // Check Workflow Status serial review pending (triggered from initial flow)
                 OptionSetValue preWorkflowStatus = preImage.GetAttributeValue<OptionSetValue>(
-                    FlowStatus
+                    ReviewerDistributionModel.FlowStatus
                 );
                 OptionSetValue postWorkflowStatus = postImage.GetAttributeValue<OptionSetValue>(
-                    FlowStatus
+                    ReviewerDistributionModel.FlowStatus
                 );
 
                 //bool isSerialReview = (preWorkflowStatus != null && preWorkflowStatus.Value == SerialReviewPending) ||
@@ -95,7 +67,7 @@ namespace DcoumentRouterPlugins
                 //}
 
                 // Distribution status has to be pending
-                if (preDistributionStatus.Value != IsPending)
+                if (preDistributionStatus.Value != DistributionStatusModel.IsPending)
                 {
                     tracer.Trace("Previous Distribution Status was not IsPending. Exiting.");
                     return;
@@ -103,8 +75,8 @@ namespace DcoumentRouterPlugins
 
                 // Verify completed or rejected
                 if (
-                    postDistributionStatus.Value != Complete
-                    && postDistributionStatus.Value != Rejected
+                    postDistributionStatus.Value != DistributionStatusModel.Complete
+                    && postDistributionStatus.Value != DistributionStatusModel.Rejected
                 )
                 {
                     tracer.Trace(
@@ -114,21 +86,23 @@ namespace DcoumentRouterPlugins
                 }
 
                 // Get parent
-                var parentReference = postImage.GetAttributeValue<EntityReference>(ParentId);
+                var parentReference = postImage.GetAttributeValue<EntityReference>(
+                    ReviewerDistributionModel.ParentId
+                );
                 if (parentReference == null)
                 {
                     throw new Exception(
-                        $"Parent routing summary lookup ({ParentId}) missing from distribution."
+                        $"Parent routing summary lookup ({ReviewerDistributionModel.ParentId}) missing from distribution."
                     );
                 }
                 var parentEntity = sysService.Retrieve(
-                    ParentEntityName,
+                    parentReference.LogicalName,
                     parentReference.Id,
                     new ColumnSet("ownerid")
                 );
 
                 // If rejected
-                if (postDistributionStatus.Value == Rejected)
+                if (postDistributionStatus.Value == DistributionStatusModel.Rejected)
                 {
                     // TODO: Should this set the status of remaining reviewers as well?
                     tracer.Trace("Reviewer Rejected. Terminating Workflow.");
@@ -137,42 +111,49 @@ namespace DcoumentRouterPlugins
                         parentReference.LogicalName,
                         parentReference.Id
                     );
-                    parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
-                    parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);
+                    parentUpdate[DocumentRouterModel.FlowStatus] = new OptionSetValue(
+                        WorkflowStatusModel.Terminated
+                    );
+                    parentUpdate[DocumentRouterModel.RoutingStatus] = new OptionSetValue(
+                        RoutingStatusModel.RejectedByReviewer
+                    );
 
                     sysService.Update(parentUpdate);
                     return;
                 }
 
                 // If completed
-                if (postDistributionStatus.Value == Complete)
+                if (postDistributionStatus.Value == DistributionStatusModel.Complete)
                 {
                     tracer.Trace("Reviewer Completed. Finding next reviewer.");
 
                     // Get next reviewer
-                    QueryExpression queryNextReviewer = new QueryExpression(ChildEntityName)
+                    QueryExpression queryNextReviewer = new QueryExpression(postImage.LogicalName)
                     {
-                        ColumnSet = new ColumnSet(DistStatus),
+                        ColumnSet = new ColumnSet(true),
                         Criteria = new FilterExpression
                         {
                             Conditions =
                             {
                                 new ConditionExpression(
-                                    ParentId,
+                                    ReviewerDistributionModel.ParentId,
                                     ConditionOperator.Equal,
                                     parentReference.Id
                                 ),
                                 new ConditionExpression(
-                                    DistStatus,
+                                    ReviewerDistributionModel.DistStatus,
                                     ConditionOperator.Equal,
-                                    NotStarted
+                                    DistributionStatusModel.NotStarted
                                 )
                             }
                         }
                     };
 
                     // Get next reviewer order
-                    queryNextReviewer.AddOrder(SetOrder, OrderType.Ascending);
+                    queryNextReviewer.AddOrder(
+                        ReviewerDistributionModel.SetOrder,
+                        OrderType.Ascending
+                    );
                     queryNextReviewer.TopCount = 1;
 
                     EntityCollection nextReviewers = sysService.RetrieveMultiple(queryNextReviewer);
@@ -181,11 +162,16 @@ namespace DcoumentRouterPlugins
                     {
                         // Set next reviewer to IsPending and transfer ownership
                         Entity nextReviewer = nextReviewers.Entities[0];
-                        Entity updateReviewer = new Entity(ChildEntityName, nextReviewer.Id);
+                        Entity updateReviewer = new Entity(
+                            nextReviewer.LogicalName,
+                            nextReviewer.Id
+                        );
 
-                        updateReviewer[DistStatus] = new OptionSetValue(IsPending);
+                        updateReviewer[ReviewerDistributionModel.DistStatus] = new OptionSetValue(
+                            DistributionStatusModel.IsPending
+                        );
                         updateReviewer["ownerid"] = nextReviewer.GetAttributeValue<EntityReference>(
-                            ReviewerLookup
+                            ReviewerDistributionModel.ReviewerLookup
                         );
 
                         sysService.Update(updateReviewer);
@@ -197,9 +183,16 @@ namespace DcoumentRouterPlugins
                         // No additional reviewers found. Review is complete.
                         tracer.Trace("No additional reviewers. Review complete");
 
-                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
-                        parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+                        Entity parentUpdate = new Entity(
+                            parentReference.LogicalName,
+                            parentReference.Id
+                        );
+                        parentUpdate[DocumentRouterModel.RoutingStatus] = new OptionSetValue(
+                            RoutingStatusModel.ReviewComplete
+                        );
+                        parentUpdate[DocumentRouterModel.FlowStatus] = new OptionSetValue(
+                            WorkflowStatusModel.PendingInitiatorAction
+                        );
 
                         sysService.Update(parentUpdate);
                     }
