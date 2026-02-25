@@ -99,8 +99,13 @@
     <Compile Include="HandleReviewerInitializationPlugin.cs" />
     <Compile Include="HandleReviewOrderPlugin.cs" />
     <Compile Include="HandleSerialReviewerProgress.cs" />
+    <Compile Include="Models\DistributionStatusModel.cs" />
+    <Compile Include="Models\DocumentRouterModel.cs" />
+    <Compile Include="Models\RoutingTypeModel.cs" />
+    <Compile Include="Models\WorkflowStatusModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PluginBase.cs" />
+    <Compile Include="Models\ReviewerDistributionModel.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Blake.snk" />
