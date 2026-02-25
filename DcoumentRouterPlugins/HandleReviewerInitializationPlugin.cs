@@ -1,4 +1,5 @@
-﻿using Microsoft.Xrm.Sdk;
+﻿using DcoumentRouterPlugins.Models;
+using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using System;
@@ -7,12 +8,6 @@ namespace DcoumentRouterPlugins
 {
     public class HandleReviewerInitializationPlugin : PluginBase
     {
-        private const int RoutedForReview = 905200001;
-        private const int NotRouted = 905200000;
-        private const int Serial = 905200000;
-        private const int Parallel = 905200001;
-        private const int IsPending = 905200001;
-
         public HandleReviewerInitializationPlugin()
             : base(typeof(HandleReviewerInitializationPlugin))
         {
@@ -37,22 +32,22 @@ namespace DcoumentRouterPlugins
 
                 if (
                     !postImage.TryGetAttributeValue(
-                        "cr8d2_routingstatus",
+                        DocumentRouterModel.RoutingStatus,
                         out OptionSetValue postRoutingStatus
                     )
                 )
                     throw new Exception("Routing Status not in Post Image");
                 if (
                     !preImage.TryGetAttributeValue(
-                        "cr8d2_routingstatus",
+                        DocumentRouterModel.RoutingStatus,
                         out OptionSetValue preRoutingStatus
                     )
                 )
                     throw new Exception("Routing Status not in Pre Image");
 
                 if (
-                    preRoutingStatus.Value != NotRouted
-                    || postRoutingStatus.Value != RoutedForReview
+                    preRoutingStatus.Value != WorkflowStatusModel.NotStarted
+                    || postRoutingStatus.Value != WorkflowStatusModel.InProgress
                 )
                 {
                     tracer.Trace(
@@ -64,7 +59,7 @@ namespace DcoumentRouterPlugins
 
                 if (
                     !postImage.TryGetAttributeValue(
-                        "cr8d2_routingtype",
+                        DocumentRouterModel.RoutingType,
                         out OptionSetValue postRoutingType
                     )
                 )
@@ -113,12 +108,17 @@ namespace DcoumentRouterPlugins
 
                 #region Handle Parallel
                 // if parallel, bulk create "Action items"
-                if (postRoutingType.Value == Parallel)
+                if (postRoutingType.Value == RoutingTypeModel.Parallel)
                 {
                     var updates = new EntityCollection();
                     foreach (var reviewer in reviewers.Entities)
                     {
-                        reviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+                        reviewer["cr8d2_distributionstatus"] = new OptionSetValue(
+                            DistributionStatusModel.IsPending
+                        );
+                        reviewer["ownerid"] = reviewer.GetAttributeValue<EntityReference>(
+                            ReviewerDistributionModel.ReviewerLookup
+                        );
 
                         updates.Entities.Add(reviewer);
                     }
@@ -136,10 +136,15 @@ namespace DcoumentRouterPlugins
 
                 #region Handle Serial
                 // if serial, create first action item (order dependant)
-                else if (postRoutingType.Value == Serial)
+                else if (postRoutingType.Value == RoutingTypeModel.Serial)
                 {
                     var firstReviewer = reviewers.Entities[0];
-                    firstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+                    firstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(
+                        DistributionStatusModel.IsPending
+                    );
+                    firstReviewer["ownerid"] = firstReviewer.GetAttributeValue<EntityReference>(
+                        ReviewerDistributionModel.ReviewerLookup
+                    );
 
                     try
                     {
