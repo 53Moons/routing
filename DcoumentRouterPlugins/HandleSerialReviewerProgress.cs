@@ -15,13 +15,12 @@ namespace DcoumentRouterPlugins
         private const string DistStatus = "cr8d2_distributionstatus";
 
         // Routing Status OptionSet Value
-        private const int ReviewComplete = 905000002;
-        private const string RoutStatus = "cr8d2_routingstatus"; 
+        private const int ReviewComplete = 905200002;        
+        private const string RoutStatus = "cr8d2_routingstatus";
 
         // Workflow Status OptionSet Value
         private const int PendingInitiatorAction = 905200012;
-        private const int SerialReviewPending = 905200003;
-        private const string FlowStatus = "cr8d2_workflowstatus"; 
+        private const string FlowStatus = "cr8d2_workflowstatus";
 
         // Handle Reject Response
         private const int RejectedByReviewer = 905200006;
@@ -29,10 +28,10 @@ namespace DcoumentRouterPlugins
 
         // Entity References
         private const string ParentEntityName = "cr8d2_routingsummary";
-        private const string ChildEntityName = "cr8d2_documentrouterdecision";
+        private const string ChildEntityName = "cr8d2_documentrouterdecision";        
 
         // Handle Order
-        private const string ParentId = "cr8d2_routingsummaryid";
+        private const string ParentId = "cr8d2_routingsummary";
         private const string SetOrder = "cr8d2_order";
 
         public HandleSerialReviewerProgressPlugin()
@@ -48,14 +47,14 @@ namespace DcoumentRouterPlugins
             var tracer = localPluginContext.TracingService;
 
             tracer.Trace("StartSerialReviewerProgress");
-                        
+
             // Check stage is post operation 40
             if (context.MessageName != "Update" || context.Stage != 40)
                 return;
 
             try
             {
-              
+
                 if (!context.PostEntityImages.TryGetValue("Image", out Entity postImage))
                     throw new Exception("Post Image is required.");
                 if (!context.PreEntityImages.TryGetValue("Image", out Entity preImage))
@@ -66,19 +65,6 @@ namespace DcoumentRouterPlugins
                     throw new Exception("Distribution Status not in Post Image");
                 if (!preImage.TryGetAttributeValue(DistStatus, out OptionSetValue preDistributionStatus))
                     throw new Exception("Distribution Status not in Pre Image");
-
-                // Check Workflow Status serial review pending (triggered from initial flow)
-                OptionSetValue preWorkflowStatus = preImage.GetAttributeValue<OptionSetValue>(FlowStatus);
-                OptionSetValue postWorkflowStatus = postImage.GetAttributeValue<OptionSetValue>(FlowStatus);
-
-                bool isSerialReview = (preWorkflowStatus != null && preWorkflowStatus.Value == SerialReviewPending) ||
-                                      (postWorkflowStatus != null && postWorkflowStatus.Value == SerialReviewPending);
-
-                if (!isSerialReview)
-                {
-                    tracer.Trace("Workflow status is not SerialReviewPending. Exiting to allow other routing types to process.");
-                    return;
-                }
 
                 // Distribution status has to be pending
                 if (preDistributionStatus.Value != IsPending)
@@ -168,6 +154,10 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleSerialReviewerProgressPlugin: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
+
+                   
+
+                
         }
     }
 }
