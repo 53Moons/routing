@@ -115,7 +115,7 @@ namespace DcoumentRouterPlugins
                 // if parallel, bulk create "Action items"
                 if (postRoutingType.Value == Parallel)
                 {
-                    var updates = new EntityCollection();
+                    var updates = new EntityCollection {EntityName = "cr8d2_documentrouterdecision"};
                     foreach (var reviewer in reviewers.Entities)
                     {
                         reviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
