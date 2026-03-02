@@ -8,7 +8,7 @@ namespace DcoumentRouterPlugins
     {
         // Approver Reference
         private const string ParentEntityName = "cr8d2_routingsummary";
-        private const string ApproverEntityName = "cr8d2_documentroutermanagementdistribution";
+        private const string ApproverEntityName = "cr8d2_documentroutermanagerdistribution";
         private const string ParentId = "cr8d2_routingsummary";
         private const string SetOrder = "cr8d2_order";
 
