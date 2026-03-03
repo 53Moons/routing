@@ -99,6 +99,7 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="HandleParallelProgress.cs" />
     <Compile Include="HandleReviewerInitializationPlugin.cs" />
     <Compile Include="HandleReviewOrderPlugin.cs" />
     <Compile Include="HandleSerialApproverInitialization.cs" />
