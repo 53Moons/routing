@@ -18,6 +18,10 @@ namespace DcoumentRouterPlugins
         private const int ReviewComplete = 905200002;        
         private const string RoutStatus = "cr8d2_routingstatus";
 
+        // Routing Type OptionSet Value
+        private const int Serial = 905200000;       
+        private const string RoutType = "cr8d2_routingtype";
+
         // Workflow Status OptionSet Value
         private const int PendingInitiatorAction = 905200012;
         private const string FlowStatus = "cr8d2_workflowstatus";
@@ -84,7 +88,16 @@ namespace DcoumentRouterPlugins
                 var parentReference = postImage.GetAttributeValue<EntityReference>(ParentId);
                 if (parentReference == null)
                 {
-                    throw new Exception($"Parent routing summary lookup ({ParentId}) missing from distribution.");
+                    throw new Exception($"Parent routing summary lookup ({ParentId}) missing from reviewer distribution.");
+                }
+
+                // Check routing type is serial
+                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType));
+                if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Serial)
+
+                {
+                    tracer.Trace("Routing Type is not Serial. Exiting.");
+                    return;
                 }
 
                 // If rejected

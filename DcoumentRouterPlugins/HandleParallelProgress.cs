@@ -18,6 +18,10 @@ namespace DcoumentRouterPlugins
         private const int ReviewComplete = 905200002;
         private const string RoutStatus = "cr8d2_routingstatus";
 
+        // Routing Type OptionSet Value
+        private const int Parallel = 905200001;
+        private const string RoutType = "cr8d2_routingtype";
+
         // Workflow Status OptionSet Value
         private const int PendingInitiatorAction = 905200012;
         private const string FlowStatus = "cr8d2_workflowstatus";
@@ -85,6 +89,15 @@ namespace DcoumentRouterPlugins
                 if (parentReference == null)
                 {
                     throw new Exception($"Parent routing summary lookup ({ParentId}) missing from distribution.");
+                }
+
+                // Check routing type is parallel
+                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType));
+                if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Parallel)
+
+                {
+                    tracer.Trace("Routing Type is not Parallel. Exiting.");
+                    return;
                 }
 
                 // If rejected

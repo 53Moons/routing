@@ -4,7 +4,7 @@ using System;
 
 namespace DcoumentRouterPlugins
 {
-    public class InitializeSerialApproverRoutingPlugin : PluginBase
+    public class HandleSerialApproverInitialization : PluginBase
     {
         // Routing Status OptionSet Values
         private const int ReviewComplete = 905200002;
@@ -24,8 +24,8 @@ namespace DcoumentRouterPlugins
         private const int IsPending = 905200001;
         private const string DistStatus = "cr8d2_distributionstatus";
 
-        public InitializeSerialApproverRoutingPlugin() 
-            : base(typeof(InitializeSerialApproverRoutingPlugin)) {
+        public HandleSerialApproverInitialization() 
+            : base(typeof(HandleSerialApproverInitialization)) {
            
         }
 
@@ -35,7 +35,7 @@ namespace DcoumentRouterPlugins
             var sysService = localPluginContext.SystemUserService;
             var tracer = localPluginContext.TracingService;
 
-            tracer.Trace("Start InitializeSerialApproverRoutingPlugin");
+            tracer.Trace("Start HandleSerialApproverInitialization");
 
             if (context.MessageName != "Update" || context.Stage != 40)
                 return;
@@ -101,7 +101,7 @@ namespace DcoumentRouterPlugins
             }
             catch (Exception ex)
             {
-                tracer.Trace($"Error in InitializeSerialApproverRoutingPlugin: {ex.Message}");
+                tracer.Trace($"Error in HandleSerialApproverInitialization: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
         }

@@ -6,11 +6,13 @@ namespace DcoumentRouterPlugins
 {
     public class HandleSerialApproverProgressPlugin : PluginBase
     {
-        // Approver Reference
+        // Entity Reference
         private const string ParentEntityName = "cr8d2_routingsummary";
         private const string ApproverEntityName = "cr8d2_documentroutermanagerdistribution";
-        private const string ParentId = "cr8d2_routingsummary";
+
+        // Handle Order      
         private const string SetOrder = "cr8d2_order";
+        private const string ParentId = "cr8d2_routingsummary";
 
         // Distribution Status OptionSet Values
         private const string DistStatus = "cr8d2_distributionstatus";
@@ -18,6 +20,10 @@ namespace DcoumentRouterPlugins
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
         private const int Rejected = 905200005;
+
+        // Routing Type OptionSet Value
+        private const int Serial = 905200000;
+        private const string RoutType = "cr8d2_routingtype";
 
         // Routing Status OptionSet Values          
         private const int ReviewComplete = 905200002;
@@ -51,11 +57,14 @@ namespace DcoumentRouterPlugins
                 if (!context.PreEntityImages.TryGetValue("PreImage", out Entity preImage))
                     throw new InvalidPluginExecutionException("PreImage is required.");
 
-                // Check dist status pending
-                var preDistStatus = preImage.GetAttributeValue<OptionSetValue>(DistStatus);
-                var postDistStatus = postImage.GetAttributeValue<OptionSetValue>(DistStatus);
+                // Confirm distribution status in image
+                if (!postImage.TryGetAttributeValue(DistStatus, out OptionSetValue postDistStatus))
+                    throw new Exception("Distribution Status not in Post Image");
+                if (!preImage.TryGetAttributeValue(DistStatus, out OptionSetValue preDistStatus))
+                    throw new Exception("Distribution Status not in Pre Image");
 
-                if (preDistStatus == null || postDistStatus == null || preDistStatus.Value != IsPending)
+                // Check dist status pending         
+                if (preDistStatus.Value != IsPending)
                 {
                     tracer.Trace("Previous Distribution Status was not IsPending. Exiting.");
                     return;
@@ -67,10 +76,19 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify routing summary parent reference
+                // Get parent 
                 var parentReference = postImage.GetAttributeValue<EntityReference>(ParentId);
                 if (parentReference == null)
-                    throw new InvalidPluginExecutionException($"Parent routing lookup missing from distribution.");
+                    throw new Exception($"Parent routing {ParentId} missing from approver distribution.");
+                
+                // Check routing type is serial
+                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType));
+                if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Serial)
+
+                {
+                    tracer.Trace("Routing Type is not Serial. Exiting.");
+                    return;
+                }
 
                 // Handle rejection
                 if (postDistStatus.Value == Rejected)
