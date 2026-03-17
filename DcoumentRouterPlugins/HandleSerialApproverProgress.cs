@@ -1,6 +1,7 @@
 ﻿using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
+using System.Web;
 
 namespace DcoumentRouterPlugins
 {
@@ -9,6 +10,7 @@ namespace DcoumentRouterPlugins
         // Entity Reference
         private const string ParentEntityName = "cr8d2_routingsummary";
         private const string ApproverEntityName = "cr8d2_documentroutermanagerdistribution";
+        private const string ApproverLookup = "cr8d2_managername";
 
         // Handle Order      
         private const string SetOrder = "cr8d2_order";
@@ -36,6 +38,13 @@ namespace DcoumentRouterPlugins
         private const int PendingInitiatorAction = 905200012;
         private const int Terminated = 905200015;
         private const string FlowStatus = "cr8d2_workflowstatus";
+
+        // Routing summary fields to set actionwith and actionnext
+        private const string ActionWith = "cr8d2_actionwith";
+        private const string ActionNext = "cr8d2_actionnext";
+
+        // Owner Email
+        private const string OwnerEmail = "cr8d2_owneremail";
 
         public HandleSerialApproverProgressPlugin() : base(typeof(HandleSerialApproverProgressPlugin)) { }
 
@@ -98,6 +107,8 @@ namespace DcoumentRouterPlugins
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                     parentUpdate[FlowStatus] = new OptionSetValue(Terminated);
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
+                    parentUpdate[ActionWith] = "None";
+                    parentUpdate[ActionNext] = "None";
 
                     sysService.Update(parentUpdate);
                     return;
@@ -107,10 +118,11 @@ namespace DcoumentRouterPlugins
                 if (postDistStatus.Value == Complete)
                 {
                     tracer.Trace("Approver Completed. Finding next Approver.");
+                // Get next 2 approvers (changed from top count 1)
 
                     QueryExpression queryNextApprover = new QueryExpression(ApproverEntityName)
                     {
-                        ColumnSet = new ColumnSet(DistStatus),
+                        ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
                         Criteria = new FilterExpression
                         {
                             Conditions =
@@ -120,7 +132,7 @@ namespace DcoumentRouterPlugins
                             new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
                         }
                         },
-                        TopCount = 1
+                        TopCount = 2
                     };
                     queryNextApprover.AddOrder(SetOrder, OrderType.Ascending);
 
@@ -129,11 +141,38 @@ namespace DcoumentRouterPlugins
                     if (nextApprovers.Entities.Count > 0)
                     {
                         // Update next approver to pending
-                        Entity nextApproverUpdate = new Entity(ApproverEntityName, nextApprovers.Entities[0].Id);
+                        Entity nextApprover = nextApprovers.Entities[0];
+                        Entity nextApproverUpdate = new Entity(ApproverEntityName, nextApprover.Id);
+
                         nextApproverUpdate[DistStatus] = new OptionSetValue(IsPending);
                         sysService.Update(nextApproverUpdate);
 
                         tracer.Trace("Next approver updated to IsPending.");
+
+                        // Set current approver action with and next approver (if exists) to action next
+                        EntityReference nextApproverRef = nextApprover.GetAttributeValue<EntityReference>(ApproverLookup);
+                        string actionWithName = null;
+                        if (nextApproverRef != null)
+                        {
+                            actionWithName = nextApproverRef.Name;
+                        }
+                        string actionNextName = null;
+                        if (nextApprovers.Entities.Count > 1)
+                        {
+                            EntityReference secondApproverRef = nextApprovers.Entities[1].GetAttributeValue<EntityReference>(ApproverLookup);
+                            if (secondApproverRef != null)
+                            {
+                                actionNextName = secondApproverRef.Name;
+                            }
+                            tracer.Trace("Second approver found for action next");
+                        }
+
+                        Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentActionUpdate[ActionWith] = actionWithName;
+                        parentActionUpdate[ActionNext] = actionNextName;
+                        sysService.Update(parentActionUpdate);
+
+                        tracer.Trace("Parent routing summary updated with action with and action next.");
                     }
                     else
                     {
@@ -143,6 +182,8 @@ namespace DcoumentRouterPlugins
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                         parentUpdate[RoutStatus] = new OptionSetValue(AllRoutingComplete);
                         parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
+                        parentUpdate[ActionWith] = "None";
+                        parentUpdate[ActionNext] = "None";
 
                         sysService.Update(parentUpdate);
                     }

@@ -19,10 +19,18 @@ namespace DcoumentRouterPlugins
         private const string ParentId = "cr8d2_routingsummary";
         private const string SetOrder = "cr8d2_order";
         private const string ApproverEntityName = "cr8d2_documentroutermanagerdistribution";
+        private const string ApproverLookup = "cr8d2_managername";
 
         // Distribution Status OptionSet Values
         private const int IsPending = 905200001;
         private const string DistStatus = "cr8d2_distributionstatus";
+
+        // Routing summary fields to set actionwith and actionnext
+        private const string ActionWith = "cr8d2_actionwith";
+        private const string ActionNext = "cr8d2_actionnext";
+
+        // Owner Email
+        private const string OwnerEmail = "cr8d2_owneremail";
 
         public HandleSerialApproverInitialization() 
             : base(typeof(HandleSerialApproverInitialization)) {
@@ -67,10 +75,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Find first approver
+                // Find first two approvers (was prev top count 1)
                 var approverQuery = new QueryExpression(ApproverEntityName)
                 {
-                    ColumnSet = new ColumnSet(DistStatus, SetOrder),
+                    ColumnSet = new ColumnSet(DistStatus, SetOrder, ApproverLookup),
                     Criteria = new FilterExpression
                     {
                         Conditions =
@@ -79,7 +87,7 @@ namespace DcoumentRouterPlugins
                         new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
                     }
                     },
-                    TopCount = 1
+                    TopCount = 2
                 };
                 approverQuery.AddOrder(SetOrder, OrderType.Ascending);
 
@@ -98,6 +106,36 @@ namespace DcoumentRouterPlugins
 
                 sysService.Update(updateApprover);
                 tracer.Trace("First approver set to IsPending successfully.");
+
+                // Set current approver as action with and next approver (if exists) as action next
+                EntityReference firstApproverRef = firstApprover.GetAttributeValue<EntityReference>(ApproverLookup);
+                string actionWithName = null;
+                if (firstApproverRef != null)
+                {
+                    actionWithName = firstApproverRef.Name;
+                }
+
+                string actionNextName = null;
+                if (approvers.Entities.Count > 1)
+                {
+                    EntityReference secondApproverRef = approvers.Entities[1].GetAttributeValue<EntityReference>(ApproverLookup);
+                    if (secondApproverRef != null)
+                    {
+                        actionNextName = secondApproverRef.Name;
+                    }
+                    tracer.Trace($"Second approver found for action next");
+                }
+                else
+                {
+                    tracer.Trace("No second approver found for action next");
+                }
+
+                Entity parentUpdate = new Entity(ParentId, postImage.Id);
+                parentUpdate[ActionWith] = actionWithName;
+                parentUpdate[ActionNext] = actionNextName;
+                sysService.Update(parentUpdate);
+
+                tracer.Trace("Parent updated with action with and action next successfully.");
             }
             catch (Exception ex)
             {
