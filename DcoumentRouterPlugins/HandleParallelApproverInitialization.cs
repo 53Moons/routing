@@ -31,7 +31,17 @@ namespace DcoumentRouterPlugins
         // Entity References
         private const string ParentEntityName = "cr8d2_routingsummary";
         private const string ChildEntityName = "cr8d2_documentroutermanagerdistribution";
-        private const string ParentId = "cr8d2_routingsummary"; 
+        private const string ParentId = "cr8d2_routingsummary";
+
+        // Routing summary fields to set actionwith and actionnext
+        private const string ActionWith = "cr8d2_actionwith";
+        private const string ActionNext = "cr8d2_actionnext";
+
+        // Reviewer lookup field
+        private const string ApproverLookup = "cr8d2_managername";
+
+        // Owner Email
+        private const string OwnerEmail = "cr8d2_owneremail";
 
         public HandleParallelApproverInitialization()
             : base(typeof(HandleParallelApproverInitialization))
@@ -70,8 +80,8 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Routing Type should be Parallel
-                Entity parent = sysService.Retrieve(ParentEntityName, postImage.Id, new ColumnSet(RoutType));
+                // Routing Type should be Parallel get owner email
+                Entity parent = sysService.Retrieve(ParentEntityName, postImage.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Parallel)
                 {
                     tracer.Trace("Routing Type is not Parallel. Exiting.");
@@ -81,7 +91,7 @@ namespace DcoumentRouterPlugins
                 // Get child dist records
                 var approverQuery = new QueryExpression(ChildEntityName)
                 {
-                    ColumnSet = new ColumnSet(true),
+                    ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
                     Criteria = new FilterExpression
                     {
                         Conditions =
@@ -98,11 +108,18 @@ namespace DcoumentRouterPlugins
                 if (approvers.Entities.Count > 0)
                 {
                     var updates = new EntityCollection { EntityName = ChildEntityName };
+                    System.Collections.Generic.List<string> approverNames = new System.Collections.Generic.List<string>();
 
                     foreach (var approver in approvers.Entities)
                     {
                         approver[DistStatus] = new OptionSetValue(IsPending);
                         updates.Entities.Add(approver);
+
+                        EntityReference approverRef = approver.GetAttributeValue<EntityReference>(ApproverLookup);
+                        if (approverRef != null)
+                        {
+                            approverNames.Add(approverRef.Name);
+                        }
                     }
 
                     var updateRequest = new UpdateMultipleRequest { Targets = updates };
@@ -110,6 +127,15 @@ namespace DcoumentRouterPlugins
                     {
                         sysService.Execute(updateRequest);
                         tracer.Trace($"Successfully updated {updates.Entities.Count} approver distribution records to IsPending.");
+
+                        // Set action with to approvers and action next to owner email
+                        string ownerEmail =parent.GetAttributeValue<string>(OwnerEmail);
+                        Entity parentUpdate = new Entity(ParentEntityName, postImage.Id);
+                        parentUpdate[ActionWith] = string.Join(",", approverNames);
+                        parentUpdate[ActionNext] = ownerEmail;
+
+                        tracer.Trace($"ActionWith set to: {string.Join(",", approverNames)}");
+                        sysService.Update(parentUpdate);
                     }
                     catch (Exception ex)
                     {

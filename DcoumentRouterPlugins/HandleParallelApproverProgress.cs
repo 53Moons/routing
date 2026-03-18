@@ -2,6 +2,7 @@
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using System;
+using System.Diagnostics.Tracing;
 
 namespace DcoumentRouterPlugins
 {
@@ -38,6 +39,16 @@ namespace DcoumentRouterPlugins
         // Handle Order
         private const string ParentId = "cr8d2_routingsummary";
         private const string SetOrder = "cr8d2_order";
+
+        // Routing summary fields to set actionwith and actionnext
+        private const string ActionWith = "cr8d2_actionwith";
+        private const string ActionNext = "cr8d2_actionnext";
+
+        // Approver lookup field
+        private const string ApproverLookup = "cr8d2_managername";
+
+        // Owner Email
+        private const string OwnerEmail = "cr8d2_owneremail";
 
         public HandleParallelApproverProgress()
             : base(typeof(HandleParallelApproverProgress))
@@ -93,7 +104,7 @@ namespace DcoumentRouterPlugins
                 }
 
                 // Check routing type is parallel
-                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType));
+                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Parallel)
 
                 {
@@ -109,6 +120,8 @@ namespace DcoumentRouterPlugins
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                     parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
+                    parentUpdate[ActionWith] = "None";
+                    parentUpdate[ActionNext] = "None";
 
                     sysService.Update(parentUpdate);
                     return;
@@ -123,23 +136,43 @@ namespace DcoumentRouterPlugins
                     // note: filter expression and condition expression may not work
                     QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
                     {
-                        ColumnSet = new ColumnSet(DistStatus),
+                        ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
                         Criteria = new FilterExpression(LogicalOperator.And)
                         {
                             Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
-                                new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending)
+                                new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending),
+                                new ConditionExpression("statecode", ConditionOperator.Equal, 0)
                             }
                         }
                     };
 
                     EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+                    
                     if (remainingApprovers.Entities.Count > 0)
                     {
-                        // Do nothing if there are still approvers remaining
-                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers");
-                        return;
+                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
+                        
+                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        foreach (var app in remainingApprovers.Entities)
+                        {
+                            var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
+                            if (appRef != null)
+                            {
+                                pendingNames.Add(appRef.Name);
+                            }
+
+                        }
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[ActionWith] = string.Join(",", pendingNames);
+                        parentUpdate[ActionNext] = ownerEmail;
+
+                        sysService.Update(parentUpdate);
+                        return;                                               
+                      
                     }
                     else
                     {
@@ -149,6 +182,8 @@ namespace DcoumentRouterPlugins
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                         parentUpdate[RoutStatus] = new OptionSetValue(RoutingComplete);
                         parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
+                        parentUpdate[ActionWith] = ownerEmail;
+                        parentUpdate[ActionNext] = "None";
 
                         sysService.Update(parentUpdate);
                     }

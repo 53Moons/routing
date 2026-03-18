@@ -22,6 +22,13 @@ namespace DcoumentRouterPlugins
         private const string ParentEntityName = "cr8d2_routingsummary";
         private const string ChildEntityName = "cr8d2_documentrouterdecision";
 
+        // Routing summary fields to set actionwith and actionnext
+        private const string ActionWith = "cr8d2_actionwith";
+        private const string ActionNext = "cr8d2_actionnext";
+
+        // Reviewer Approver lookup fields
+        private const string ReviewerLookup = "cr8d2_distributionname";
+
 
         public HandleNewParallelReviewerCreatePlugin()
             : base(typeof(HandleNewParallelReviewerCreatePlugin))
@@ -52,9 +59,9 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify routing status and routing type
+                // Verify routing status and routing type. Get reviewer names.
                 Entity parentDocument = sysService.Retrieve(parentReference.LogicalName,parentReference.Id,
-                    new ColumnSet(RoutStatus, RoutType)
+                    new ColumnSet(RoutStatus, RoutType, ActionWith)
                 );
 
                 var parentRoutingStatus = parentDocument.GetAttributeValue<OptionSetValue>(RoutStatus)?.Value;
@@ -67,6 +74,24 @@ namespace DcoumentRouterPlugins
 
                     // Update distribution status  
                     targetEntity[DistStatus] = new OptionSetValue(IsPending);
+
+                    // Update action with all reviewer names trying ternary operator instead of if/else similar to join 
+                    string currentActionWith = parentDocument.GetAttributeValue<string>(ActionWith);
+                    EntityReference reviewerRef = targetEntity.GetAttributeValue<EntityReference>(ReviewerLookup);
+
+                    if (reviewerRef != null)
+
+                    {
+                        string newActionWith = string.IsNullOrEmpty(currentActionWith)
+                            ? reviewerRef.Name
+                            : currentActionWith + ", " + reviewerRef.Name;
+
+                        Entity updateParent = new Entity(ParentEntityName, parentReference.Id);
+                        updateParent[ActionWith] = newActionWith;
+                        sysService.Update(updateParent);
+
+                        tracer.Trace($"Added {reviewerRef.Name} to action with");
+                    }
                 }
                 else
                 {
