@@ -38,7 +38,7 @@ namespace DcoumentRouterPlugins
 
                 // Give child record same name as document router parent
                 string parentName = target.Contains("cr8d2_name") ? target["cr8d2_name"].ToString() : "Unknown Router";
-                newSignatureRecord["cr8d2_name"] = $"Signature Payload - {parentName}";
+                newSignatureRecord["cr8d2_name"] = $"Signature PDF for {parentName}";
 
                 // Create child record
                 Guid childRecordId = sysService.Create(newSignatureRecord);
