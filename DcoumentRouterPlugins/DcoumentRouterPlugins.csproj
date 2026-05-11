@@ -108,6 +108,7 @@
     <Compile Include="HandleSerialApproverInitialization.cs" />
     <Compile Include="HandleSerialApproverProgress.cs" />
     <Compile Include="HandleSerialReviewerProgress.cs" />
+    <Compile Include="InitializeChildRecordOnCreate.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PluginBase.cs" />
   </ItemGroup>
