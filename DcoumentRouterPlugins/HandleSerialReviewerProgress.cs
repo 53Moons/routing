@@ -11,6 +11,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
         private const string DistStatus = "cr8d2_distributionstatus";
 
@@ -87,10 +88,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected)
+                // Verify completed or rejected or Reassigned
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
                 }
 
@@ -125,10 +126,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If completed
-                if (postDistributionStatus.Value == Complete)
+                // If completed or Reassigned
+                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Reviewer Completed. Finding next reviewer.");
+                    tracer.Trace("Reviewer Completed or Reassigned. Finding next reviewer.");
 
                     // Get next reviewer - updated to pull 2 for action with and action next
                     QueryExpression queryNextReviewer = new QueryExpression(ChildEntityName)

@@ -11,6 +11,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
         private const string DistStatus = "cr8d2_distributionstatus";
 
@@ -87,10 +88,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected)
+                // Verify completed or rejected or reassigned
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected or Reassigned. Exiting.");
                     return;
                 }
 
@@ -110,10 +111,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected or completed
-                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete)
+                // If rejected or completed or Reassigned
+                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Reviewer Completed or Rejected. Check for pending reviewers.");
+                    tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
 
                     // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)

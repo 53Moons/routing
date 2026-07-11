@@ -90,7 +90,7 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
+                // Verify completed or rejected or reassigned
                 if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value !=Reassigned)
                 {
                     tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
@@ -128,7 +128,7 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If completed
+                // If completed or reassigned
                 if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
                     tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");

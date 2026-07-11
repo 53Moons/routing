@@ -115,7 +115,7 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Find next approver if prev complete
+                // Find next approver if prev complete or Reassigned
                 if (postDistStatus.Value == Complete || postDistStatus.Value == Reassigned)
                 {
                     tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
