@@ -12,6 +12,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
         private const string DistStatus = "cr8d2_distributionstatus";
 
@@ -90,9 +91,9 @@ namespace DcoumentRouterPlugins
                 }
 
                 // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected)
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value !=Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
                 }
 
@@ -128,9 +129,9 @@ namespace DcoumentRouterPlugins
                 }
 
                 // If completed
-                if (postDistributionStatus.Value == Complete)
+                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Approver Completed. Check for other pending approvers.");
+                    tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
 
                     // Keep checking for IsPending or Complete 
                     // note: filter expression and condition expression may not work

@@ -21,6 +21,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
 
         // Routing Type OptionSet Value
@@ -79,9 +80,9 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                if (postDistStatus.Value != Complete && postDistStatus.Value != Rejected)
+                if (postDistStatus.Value != Complete && postDistStatus.Value != Rejected && postDistStatus.Value != Reassigned)
                 {
-                    tracer.Trace("Status changed, but not to Complete or Rejected. Exiting.");
+                    tracer.Trace("Status changed, but not to Complete, Rejected, or Reassigned. Exiting.");
                     return;
                 }
 
@@ -115,9 +116,9 @@ namespace DcoumentRouterPlugins
                 }
 
                 // Find next approver if prev complete
-                if (postDistStatus.Value == Complete)
+                if (postDistStatus.Value == Complete || postDistStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Approver Completed. Finding next Approver.");
+                    tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
                 // Get next 2 approvers (changed from top count 1)
 
                     QueryExpression queryNextApprover = new QueryExpression(ApproverEntityName)
