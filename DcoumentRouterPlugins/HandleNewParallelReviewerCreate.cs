@@ -29,6 +29,9 @@ namespace DcoumentRouterPlugins
         // Reviewer Approver lookup fields
         private const string ReviewerLookup = "cr8d2_distributionname";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
 
         public HandleNewParallelReviewerCreatePlugin()
             : base(typeof(HandleNewParallelReviewerCreatePlugin))
@@ -74,6 +77,9 @@ namespace DcoumentRouterPlugins
 
                     // Update distribution status  
                     targetEntity[DistStatus] = new OptionSetValue(IsPending);
+                    targetEntity[PendingDate] = DateTime.UtcNow;
+
+
 
                     // Update action with all reviewer names trying ternary operator instead of if/else similar to join 
                     string currentActionWith = parentDocument.GetAttributeValue<string>(ActionWith);

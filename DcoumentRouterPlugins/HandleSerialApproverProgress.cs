@@ -50,6 +50,9 @@ namespace DcoumentRouterPlugins
         // Reassign Confirmation
         private const string ReassignDate = "cr8d2_reassignedon";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleSerialApproverProgressPlugin() : base(typeof(HandleSerialApproverProgressPlugin)) { }
 
         protected override void ExecuteCdsPlugin(ILocalPluginContext localPluginContext)
@@ -129,77 +132,78 @@ namespace DcoumentRouterPlugins
 
                         sysService.Update(updateReassignDate);
                     }
+
+                    tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
+                    // Get next 2 approvers (changed from top count 1)
+
+                    QueryExpression queryNextApprover = new QueryExpression(ApproverEntityName)
                     {
-                        tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
-                        // Get next 2 approvers (changed from top count 1)
-
-                        QueryExpression queryNextApprover = new QueryExpression(ApproverEntityName)
+                        ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
+                        Criteria = new FilterExpression
                         {
-                            ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
-                            Criteria = new FilterExpression
+                            Conditions =
                             {
-                                Conditions =
-                        {
-                            new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
-                            new ConditionExpression(DistStatus, ConditionOperator.Equal, NotStarted),
-                            new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
-                        }
-                            },
-                            TopCount = 2
-                        };
-                        queryNextApprover.AddOrder(SetOrder, OrderType.Ascending);
-
-                        EntityCollection nextApprovers = sysService.RetrieveMultiple(queryNextApprover);
-
-                        if (nextApprovers.Entities.Count > 0)
-                        {
-                            // Update next approver to pending
-                            Entity nextApprover = nextApprovers.Entities[0];
-                            Entity nextApproverUpdate = new Entity(ApproverEntityName, nextApprover.Id);
-
-                            nextApproverUpdate[DistStatus] = new OptionSetValue(IsPending);
-                            sysService.Update(nextApproverUpdate);
-
-                            tracer.Trace("Next approver updated to IsPending.");
-
-                            // Set current approver action with and next approver (if exists) to action next
-                            EntityReference nextApproverRef = nextApprover.GetAttributeValue<EntityReference>(ApproverLookup);
-                            string actionWithName = null;
-                            if (nextApproverRef != null)
-                            {
-                                actionWithName = nextApproverRef.Name;
+                                new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
+                                new ConditionExpression(DistStatus, ConditionOperator.Equal, NotStarted),
+                                new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
                             }
-                            string actionNextName = null;
-                            if (nextApprovers.Entities.Count > 1)
-                            {
-                                EntityReference secondApproverRef = nextApprovers.Entities[1].GetAttributeValue<EntityReference>(ApproverLookup);
-                                if (secondApproverRef != null)
-                                {
-                                    actionNextName = secondApproverRef.Name;
-                                }
-                                tracer.Trace("Second approver found for action next");
-                            }
+                        },
+                        TopCount = 2
+                    };
+                    queryNextApprover.AddOrder(SetOrder, OrderType.Ascending);
 
-                            Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentActionUpdate[ActionWith] = actionWithName;
-                            parentActionUpdate[ActionNext] = actionNextName;
-                            sysService.Update(parentActionUpdate);
+                    EntityCollection nextApprovers = sysService.RetrieveMultiple(queryNextApprover);
 
-                            tracer.Trace("Parent routing summary updated with action with and action next.");
-                        }
-                        else
+                    if (nextApprovers.Entities.Count > 0)
+                    {
+                        // Update next approver to pending
+                        Entity nextApprover = nextApprovers.Entities[0];
+                        Entity nextApproverUpdate = new Entity(ApproverEntityName, nextApprover.Id);
+
+                        nextApproverUpdate[DistStatus] = new OptionSetValue(IsPending);
+                        nextApproverUpdate[PendingDate] = DateTime.UtcNow;
+
+                        sysService.Update(nextApproverUpdate);
+
+                        tracer.Trace("Next approver updated to IsPending.");
+
+                        // Set current approver action with and next approver (if exists) to action next
+                        EntityReference nextApproverRef = nextApprover.GetAttributeValue<EntityReference>(ApproverLookup);
+                        string actionWithName = null;
+                        if (nextApproverRef != null)
                         {
-                            // No more approvers then routing is complete
-                            tracer.Trace("No additional approvers. Routing complete.");
-
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[RoutStatus] = new OptionSetValue(AllRoutingComplete);
-                            parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
-                            parentUpdate[ActionWith] = "None";
-                            parentUpdate[ActionNext] = "None";
-
-                            sysService.Update(parentUpdate);
+                            actionWithName = nextApproverRef.Name;
                         }
+                        string actionNextName = null;
+                        if (nextApprovers.Entities.Count > 1)
+                        {
+                            EntityReference secondApproverRef = nextApprovers.Entities[1].GetAttributeValue<EntityReference>(ApproverLookup);
+                            if (secondApproverRef != null)
+                            {
+                                actionNextName = secondApproverRef.Name;
+                            }
+                            tracer.Trace("Second approver found for action next");
+                        }
+
+                        Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentActionUpdate[ActionWith] = actionWithName;
+                        parentActionUpdate[ActionNext] = actionNextName;
+                        sysService.Update(parentActionUpdate);
+
+                        tracer.Trace("Parent routing summary updated with action with and action next.");
+                    }
+                    else
+                    {
+                        // No more approvers then routing is complete
+                        tracer.Trace("No additional approvers. Routing complete.");
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[RoutStatus] = new OptionSetValue(AllRoutingComplete);
+                        parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
+                        parentUpdate[ActionWith] = "None";
+                        parentUpdate[ActionNext] = "None";
+
+                        sysService.Update(parentUpdate);
                     }
                 }
             }

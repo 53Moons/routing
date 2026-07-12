@@ -43,6 +43,9 @@ namespace DcoumentRouterPlugins
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleParallelApproverInitialization()
             : base(typeof(HandleParallelApproverInitialization))
         {
@@ -103,7 +106,7 @@ namespace DcoumentRouterPlugins
                 };
 
                 // Get approvers
-                var approvers= sysService.RetrieveMultiple(approverQuery);
+                var approvers = sysService.RetrieveMultiple(approverQuery);
 
                 if (approvers.Entities.Count > 0)
                 {
@@ -112,8 +115,12 @@ namespace DcoumentRouterPlugins
 
                     foreach (var approver in approvers.Entities)
                     {
-                        approver[DistStatus] = new OptionSetValue(IsPending);
-                        updates.Entities.Add(approver);
+                        Entity updateApprover = new Entity(ChildEntityName, approver.Id);
+
+                        updateApprover[DistStatus] = new OptionSetValue(IsPending);
+                        updateApprover[PendingDate] = DateTime.UtcNow;
+
+                        updates.Entities.Add(updateApprover);
 
                         EntityReference approverRef = approver.GetAttributeValue<EntityReference>(ApproverLookup);
                         if (approverRef != null)
@@ -129,12 +136,13 @@ namespace DcoumentRouterPlugins
                         tracer.Trace($"Successfully updated {updates.Entities.Count} approver distribution records to IsPending.");
 
                         // Set action with to approvers and action next to owner email
-                        string ownerEmail =parent.GetAttributeValue<string>(OwnerEmail);
+                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
                         Entity parentUpdate = new Entity(ParentEntityName, postImage.Id);
-                        parentUpdate[ActionWith] = string.Join(",", approverNames);
+
+                        parentUpdate[ActionWith] = string.Join(", ", approverNames);
                         parentUpdate[ActionNext] = ownerEmail;
 
-                        tracer.Trace($"ActionWith set to: {string.Join(",", approverNames)}");
+                        tracer.Trace($"ActionWith set to: {string.Join(", ", approverNames)}");
                         sysService.Update(parentUpdate);
                     }
                     catch (Exception ex)

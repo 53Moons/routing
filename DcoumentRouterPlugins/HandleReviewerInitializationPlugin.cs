@@ -20,6 +20,9 @@ namespace DcoumentRouterPlugins
         // Reviewer name lookup field on routing decision entity
         private const string ReviewerLookup = "cr8d2_distributionname";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleReviewerInitializationPlugin()
             : base(typeof(HandleReviewerInitializationPlugin))
         {
@@ -60,7 +63,7 @@ namespace DcoumentRouterPlugins
                 #region Get Reviewers
                 var reviewerQuery = new QueryExpression("cr8d2_documentrouterdecision")
                 {
-                    ColumnSet = new ColumnSet(true),
+                    ColumnSet = new ColumnSet("cr8d2_distributionstatus", "cr8d2_order", ReviewerLookup),
                     Criteria = new FilterExpression
                     {
                         Conditions =
@@ -97,8 +100,12 @@ namespace DcoumentRouterPlugins
 
                     foreach (var reviewer in reviewers.Entities)
                     {
-                        reviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
-                        updates.Entities.Add(reviewer);
+                        Entity updateReviewer = new Entity("cr8d2_documentrouterdecision", reviewer.Id);
+
+                        updateReviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+                        updateReviewer[PendingDate] = DateTime.UtcNow;
+
+                        updates.Entities.Add(updateReviewer);
 
                         // Get reviewer for action with
                         EntityReference reviewerRef = reviewer.GetAttributeValue<EntityReference>(ReviewerLookup);
@@ -118,7 +125,7 @@ namespace DcoumentRouterPlugins
                         throw new Exception("Error creating action items.", ex);
                     }
 
-                    // parallel action with all names next action owner by name not email so we don't have to query user table
+                    // parallel action with all names next action owner by name 
                     EntityReference ownerRef = postImage.GetAttributeValue<EntityReference>("ownerid");
 
                     string ownerName = null;
@@ -140,11 +147,15 @@ namespace DcoumentRouterPlugins
                 else if (postRoutingType.Value == Serial)
                 {
                     var firstReviewer = reviewers.Entities[0];
-                    firstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+
+                    Entity updateFirstReviewer = new Entity("cr8d2_documentrouterdecision", firstReviewer.Id);
+
+                    updateFirstReviewer["cr8d2_distributionstatus"] = new OptionSetValue(IsPending);
+                    updateFirstReviewer[PendingDate] = DateTime.UtcNow;
 
                     try
                     {
-                        sysService.Update(firstReviewer);
+                        sysService.Update(updateFirstReviewer);
                     }
                     catch (Exception ex)
                     {
@@ -192,3 +203,4 @@ namespace DcoumentRouterPlugins
         }
     }
 }
+

@@ -54,6 +54,9 @@ namespace DcoumentRouterPlugins
         // Reassign Confirmation
         private const string ReassignDate = "cr8d2_reassignedon";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleParallelApproverProgress()
             : base(typeof(HandleParallelApproverProgress))
         {
@@ -142,64 +145,82 @@ namespace DcoumentRouterPlugins
 
                         sysService.Update(updateReassignDate);
                     }
-                    {
-                        tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
 
-                        // Keep checking for IsPending or Complete 
-                        // note: filter expression and condition expression may not work
-                        QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
+                    tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
+
+                    // Keep checking for IsPending or Complete 
+                    // note: filter expression and condition expression may not work
+                    QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
+                    {
+                        ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
+                        Criteria = new FilterExpression(LogicalOperator.And)
                         {
-                            ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
-                            Criteria = new FilterExpression(LogicalOperator.And)
-                            {
-                                Conditions =
+                            Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
                                 new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending),
                                 new ConditionExpression("statecode", ConditionOperator.Equal, 0)
                             }
-                            }
-                        };
+                        }
+                    };
 
-                        EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
-                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+                    EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
-                        if (remainingApprovers.Entities.Count > 0)
+                    if (remainingApprovers.Entities.Count > 0)
+                    {
+                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
+
+                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        var updates = new EntityCollection { EntityName = ChildEntityName };
+
+                        foreach (var app in remainingApprovers.Entities)
                         {
-                            tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
-
-                            System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
-                            foreach (var app in remainingApprovers.Entities)
+                            var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
+                            if (appRef != null)
                             {
-                                var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
-                                if (appRef != null)
-                                {
-                                    pendingNames.Add(appRef.Name);
-                                }
-
+                                pendingNames.Add(appRef.Name);
                             }
 
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[ActionWith] = string.Join(",", pendingNames);
-                            parentUpdate[ActionNext] = ownerEmail;
-
-                            sysService.Update(parentUpdate);
-                            return;
-
+                            // If this remaining approver was just added (NotStarted), move to Pending and stamp date
+                            var appStatus = app.GetAttributeValue<OptionSetValue>(DistStatus);
+                            if (appStatus != null && appStatus.Value == NotStarted)
+                            {
+                                Entity updateApp = new Entity(ChildEntityName, app.Id);
+                                updateApp[DistStatus] = new OptionSetValue(IsPending);
+                                updateApp[PendingDate] = DateTime.UtcNow;
+                                updates.Entities.Add(updateApp);
+                            }
                         }
-                        else
+
+                        // Execute batch update for any new NotStarted approvers found
+                        if (updates.Entities.Count > 0)
                         {
-                            // No additional approvers found. Routing is complete.  
-                            tracer.Trace("No additional approvers. Routing complete");
-
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[RoutStatus] = new OptionSetValue(RoutingComplete);
-                            parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
-                            parentUpdate[ActionWith] = ownerEmail;
-                            parentUpdate[ActionNext] = "None";
-
-                            sysService.Update(parentUpdate);
+                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
+                            sysService.Execute(updateRequest);
+                            tracer.Trace($"Batch updated {updates.Entities.Count} new approvers to IsPending and stamped PendingDate.");
                         }
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[ActionWith] = string.Join(", ", pendingNames);
+                        parentUpdate[ActionNext] = ownerEmail;
+
+                        sysService.Update(parentUpdate);
+                        return;
+
+                    }
+                    else
+                    {
+                        // No additional approvers found. Routing is complete.  
+                        tracer.Trace("No additional approvers. Routing complete");
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[RoutStatus] = new OptionSetValue(RoutingComplete);
+                        parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
+                        parentUpdate[ActionWith] = ownerEmail;
+                        parentUpdate[ActionNext] = "None";
+
+                        sysService.Update(parentUpdate);
                     }
                 }
             }
@@ -208,10 +229,6 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleParallelApproverProgress: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-
-
-
-
         }
     }
 }

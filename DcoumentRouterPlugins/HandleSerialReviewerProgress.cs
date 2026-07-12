@@ -33,7 +33,7 @@ namespace DcoumentRouterPlugins
 
         // Entity References
         private const string ParentEntityName = "cr8d2_routingsummary";
-        private const string ChildEntityName = "cr8d2_documentrouterdecision";     
+        private const string ChildEntityName = "cr8d2_documentrouterdecision";
 
         // Handle Order
         private const string ParentId = "cr8d2_routingsummary";
@@ -44,13 +44,16 @@ namespace DcoumentRouterPlugins
         private const string ActionNext = "cr8d2_actionnext";
 
         // Reviewer Approver lookup fields
-        private const string ReviewerLookup = "cr8d2_distributionname";      
+        private const string ReviewerLookup = "cr8d2_distributionname";
 
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
         // Reassign Confirmation
         private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
 
         public HandleSerialReviewerProgressPlugin()
             : base(typeof(HandleSerialReviewerProgressPlugin))
@@ -140,97 +143,94 @@ namespace DcoumentRouterPlugins
 
                         sysService.Update(updateReassignDate);
                     }
-                    {
-                        tracer.Trace("Reviewer Completed or Reassigned. Finding next reviewer.");
 
-                        // Get next reviewer - updated to pull 2 for action with and action next
-                        QueryExpression queryNextReviewer = new QueryExpression(ChildEntityName)
+                    tracer.Trace("Reviewer Completed or Reassigned. Finding next reviewer.");
+
+                    // Get next reviewer - updated to pull 2 for action with and action next
+                    QueryExpression queryNextReviewer = new QueryExpression(ChildEntityName)
+                    {
+                        ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
+                        Criteria = new FilterExpression
                         {
-                            ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
-                            Criteria = new FilterExpression
-                            {
-                                Conditions =
+                            Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
                                 new ConditionExpression(DistStatus, ConditionOperator.Equal, NotStarted)
                             }
-                            }
-                        };
+                        }
+                    };
 
-                        // Get next reviewer order
-                        queryNextReviewer.AddOrder(SetOrder, OrderType.Ascending);
-                        queryNextReviewer.TopCount = 2;
+                    // Get next reviewer order
+                    queryNextReviewer.AddOrder(SetOrder, OrderType.Ascending);
+                    queryNextReviewer.TopCount = 2;
 
-                        EntityCollection nextReviewers = sysService.RetrieveMultiple(queryNextReviewer);
+                    EntityCollection nextReviewers = sysService.RetrieveMultiple(queryNextReviewer);
 
-                        // Reviewer assigned, reviewer finishes, count starts at 0 each iteration
-                        if (nextReviewers.Entities.Count > 0)
+                    // Reviewer assigned, reviewer finishes, count starts at 0 each iteration
+                    if (nextReviewers.Entities.Count > 0)
+                    {
+                        // Set next reviewer to IsPending
+                        Entity nextReviewer = nextReviewers.Entities[0];
+                        Entity updateReviewer = new Entity(ChildEntityName, nextReviewer.Id);
+
+                        updateReviewer[DistStatus] = new OptionSetValue(IsPending);
+                        updateReviewer[PendingDate] = DateTime.UtcNow;
+
+                        sysService.Update(updateReviewer);
+
+                        tracer.Trace("Next reviewer updated to IsPending.");
+
+                        // Set current reviewer as action with and next reviewer (if exists) as action next
+                        EntityReference nextReviewerRef = nextReviewer.GetAttributeValue<EntityReference>(ReviewerLookup);
+                        string actionWithName = null;
+                        if (nextReviewerRef != null)
                         {
-                            // Set next reviewer to IsPending
-                            Entity nextReviewer = nextReviewers.Entities[0];
-                            Entity updateReviewer = new Entity(ChildEntityName, nextReviewer.Id);
-
-                            updateReviewer[DistStatus] = new OptionSetValue(IsPending);
-                            sysService.Update(updateReviewer);
-
-                            tracer.Trace("Next reviewer updated to IsPending.");
-
-                            // Set current reviewer as action with and next reviewer (if exists) as action next
-                            EntityReference nextReviewerRef = nextReviewer.GetAttributeValue<EntityReference>(ReviewerLookup);
-                            string actionWithName = null;
-                            if (nextReviewerRef != null)
+                            actionWithName = nextReviewerRef.Name;
+                        }
+                        string actionNextName = null;
+                        if (nextReviewers.Entities.Count > 1)
+                        {
+                            EntityReference secondReviewerRef = nextReviewers.Entities[1].GetAttributeValue<EntityReference>(ReviewerLookup);
+                            if (secondReviewerRef != null)
                             {
-                                actionWithName = nextReviewerRef.Name;
+                                actionNextName = secondReviewerRef.Name;
                             }
-                            string actionNextName = null;
-                            if (nextReviewers.Entities.Count > 1)
-                            {
-                                EntityReference secondReviewerRef = nextReviewers.Entities[1].GetAttributeValue<EntityReference>(ReviewerLookup);
-                                if (secondReviewerRef != null)
-                                {
-                                    actionNextName = secondReviewerRef.Name;
-                                }
-                                tracer.Trace("Second reviewer found for action next.");
-                            }
-                            else
-                            {
-                                tracer.Trace("Second reviewer not found");
-                            }
-
-                            Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentActionUpdate[ActionWith] = actionWithName;
-                            parentActionUpdate[ActionNext] = actionNextName;
-                            sysService.Update(parentActionUpdate);
-
-                            tracer.Trace("Parent routing summary updated with action with and action next.");
+                            tracer.Trace("Second reviewer found for action next.");
                         }
                         else
                         {
-                            // No additional reviewers found. Review is complete
-                            tracer.Trace("No additional reviewers found. Review complete.");
-
-                            string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
-
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
-                            parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
-                            parentUpdate[ActionWith] = ownerEmail;
-                            parentUpdate[ActionNext] = "Pending";
-
-                            sysService.Update(parentUpdate);
+                            tracer.Trace("Second reviewer not found");
                         }
+
+                        Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentActionUpdate[ActionWith] = actionWithName;
+                        parentActionUpdate[ActionNext] = actionNextName;
+                        sysService.Update(parentActionUpdate);
+
+                        tracer.Trace("Parent routing summary updated with action with and action next.");
+                    }
+                    else
+                    {
+                        // No additional reviewers found. Review is complete
+                        tracer.Trace("No additional reviewers found. Review complete.");
+
+                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
+                        parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+                        parentUpdate[ActionWith] = ownerEmail;
+                        parentUpdate[ActionNext] = "Pending";
+
+                        sysService.Update(parentUpdate);
                     }
                 }
             }
-
             catch (Exception ex)
             {
                 tracer.Trace($"Error in HandleSerialReviewerProgressPlugin: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-            }
-
-
-
         }
     }
+}

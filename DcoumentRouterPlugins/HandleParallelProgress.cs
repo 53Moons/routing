@@ -52,6 +52,9 @@ namespace DcoumentRouterPlugins
         // Reassign Confirmation
         private const string ReassignDate = "cr8d2_reassignedon";
 
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleParallelProgress()
             : base(typeof(HandleParallelProgress))
         {
@@ -125,62 +128,80 @@ namespace DcoumentRouterPlugins
 
                         sysService.Update(updateReassignDate);
                     }
-                    {
-                        tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
 
-                        // Get remaining active and value exists in list of values notstarted ispending
-                        QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
+                    tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
+
+                    // Get remaining active and value exists in list of values notstarted ispending
+                    QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
+                    {
+                        ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
+                        Criteria = new FilterExpression(LogicalOperator.And)
                         {
-                            ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
-                            Criteria = new FilterExpression(LogicalOperator.And)
-                            {
-                                Conditions =
+                            Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
                                 new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending),
                                 new ConditionExpression("statecode", ConditionOperator.Equal, 0)
                             }
-                            }
-                        };
+                        }
+                    };
 
-                        EntityCollection remainingReviewers = sysService.RetrieveMultiple(queryremainingReviewers);
-                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+                    EntityCollection remainingReviewers = sysService.RetrieveMultiple(queryremainingReviewers);
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
-                        if (remainingReviewers.Entities.Count > 0)
+                    if (remainingReviewers.Entities.Count > 0)
+                    {
+                        tracer.Trace($"{remainingReviewers.Entities.Count} remainingReviewers. Updating ActionWith.");
+
+                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        var updates = new EntityCollection { EntityName = ChildEntityName };
+
+                        foreach (var rev in remainingReviewers.Entities)
                         {
-                            tracer.Trace($"{remainingReviewers.Entities.Count} remainingReviewers. Updating ActionWith.");
-
-                            System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
-                            foreach (var rev in remainingReviewers.Entities)
+                            var revRef = rev.GetAttributeValue<EntityReference>(ReviewerLookup);
+                            if (revRef != null)
                             {
-                                var revRef = rev.GetAttributeValue<EntityReference>(ReviewerLookup);
-                                if (revRef != null)
-                                {
-                                    pendingNames.Add(revRef.Name);
-                                }
+                                pendingNames.Add(revRef.Name);
                             }
 
-
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[ActionWith] = string.Join(", ", pendingNames);
-                            parentUpdate[ActionNext] = ownerEmail;
-
-                            sysService.Update(parentUpdate);
-                            return;
+                            // If this remaining reviewer was just added (NotStarted), move to Pending and stamp date
+                            var revStatus = rev.GetAttributeValue<OptionSetValue>(DistStatus);
+                            if (revStatus != null && revStatus.Value == NotStarted)
+                            {
+                                Entity updateRev = new Entity(ChildEntityName, rev.Id);
+                                updateRev[DistStatus] = new OptionSetValue(IsPending);
+                                updateRev[PendingDate] = DateTime.UtcNow;
+                                updates.Entities.Add(updateRev);
+                            }
                         }
-                        else
+
+                        // Execute batch update for any new NotStarted reviewers found
+                        if (updates.Entities.Count > 0)
                         {
-                            // No additional reviewers found. Review is complete.  
-                            tracer.Trace("No additional reviewers. Review complete");
-
-                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                            parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
-                            parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
-                            parentUpdate[ActionWith] = ownerEmail;
-                            parentUpdate[ActionNext] = "Pending";
-
-                            sysService.Update(parentUpdate);
+                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
+                            sysService.Execute(updateRequest);
+                            tracer.Trace($"Batch updated {updates.Entities.Count} new reviewers to IsPending and stamped PendingDate.");
                         }
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[ActionWith] = string.Join(", ", pendingNames);
+                        parentUpdate[ActionNext] = ownerEmail;
+
+                        sysService.Update(parentUpdate);
+                        return;
+                    }
+                    else
+                    {
+                        // No additional reviewers found. Review is complete.  
+                        tracer.Trace("No additional reviewers. Review complete");
+
+                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                        parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
+                        parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+                        parentUpdate[ActionWith] = ownerEmail;
+                        parentUpdate[ActionNext] = "Pending";
+
+                        sysService.Update(parentUpdate);
                     }
                 }
             }
@@ -189,10 +210,6 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleParallelProgress: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-
-
-
-
         }
     }
 }

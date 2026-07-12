@@ -32,9 +32,13 @@ namespace DcoumentRouterPlugins
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
-        public HandleSerialApproverInitialization() 
-            : base(typeof(HandleSerialApproverInitialization)) {
-           
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
+        public HandleSerialApproverInitialization()
+            : base(typeof(HandleSerialApproverInitialization))
+        {
+
         }
 
         protected override void ExecuteCdsPlugin(ILocalPluginContext localPluginContext)
@@ -103,6 +107,7 @@ namespace DcoumentRouterPlugins
 
                 Entity updateApprover = new Entity(ApproverEntityName, firstApprover.Id);
                 updateApprover[DistStatus] = new OptionSetValue(IsPending);
+                updateApprover[PendingDate] = DateTime.UtcNow;
 
                 sysService.Update(updateApprover);
                 tracer.Trace("First approver set to IsPending successfully.");
