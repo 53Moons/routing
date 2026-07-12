@@ -51,6 +51,9 @@ namespace DcoumentRouterPlugins
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
         public HandleParallelApproverProgress()
             : base(typeof(HandleParallelApproverProgress))
         {
@@ -91,7 +94,7 @@ namespace DcoumentRouterPlugins
                 }
 
                 // Verify completed or rejected or reassigned
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value !=Reassigned)
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
                     tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
@@ -131,62 +134,72 @@ namespace DcoumentRouterPlugins
                 // If completed or reassigned
                 if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
-
-                    // Keep checking for IsPending or Complete 
-                    // note: filter expression and condition expression may not work
-                    QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
+                    if (postDistributionStatus.Value == Reassigned)
                     {
-                        ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
-                        Criteria = new FilterExpression(LogicalOperator.And)
+                        tracer.Trace("Reviewer Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
+
+                        sysService.Update(updateReassignDate);
+                    }
+                    {
+                        tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
+
+                        // Keep checking for IsPending or Complete 
+                        // note: filter expression and condition expression may not work
+                        QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
                         {
-                            Conditions =
+                            ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
+                            Criteria = new FilterExpression(LogicalOperator.And)
+                            {
+                                Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
                                 new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending),
                                 new ConditionExpression("statecode", ConditionOperator.Equal, 0)
                             }
-                        }
-                    };
+                            }
+                        };
 
-                    EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
-                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
-                    
-                    if (remainingApprovers.Entities.Count > 0)
-                    {
-                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
-                        
-                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
-                        foreach (var app in remainingApprovers.Entities)
+                        EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
+                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+
+                        if (remainingApprovers.Entities.Count > 0)
                         {
-                            var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
-                            if (appRef != null)
+                            tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
+
+                            System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                            foreach (var app in remainingApprovers.Entities)
                             {
-                                pendingNames.Add(appRef.Name);
+                                var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
+                                if (appRef != null)
+                                {
+                                    pendingNames.Add(appRef.Name);
+                                }
+
                             }
 
+                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                            parentUpdate[ActionWith] = string.Join(",", pendingNames);
+                            parentUpdate[ActionNext] = ownerEmail;
+
+                            sysService.Update(parentUpdate);
+                            return;
+
                         }
+                        else
+                        {
+                            // No additional approvers found. Routing is complete.  
+                            tracer.Trace("No additional approvers. Routing complete");
 
-                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[ActionWith] = string.Join(",", pendingNames);
-                        parentUpdate[ActionNext] = ownerEmail;
+                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                            parentUpdate[RoutStatus] = new OptionSetValue(RoutingComplete);
+                            parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
+                            parentUpdate[ActionWith] = ownerEmail;
+                            parentUpdate[ActionNext] = "None";
 
-                        sysService.Update(parentUpdate);
-                        return;                                               
-                      
-                    }
-                    else
-                    {
-                        // No additional approvers found. Routing is complete.  
-                        tracer.Trace("No additional approvers. Routing complete");
-
-                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[RoutStatus] = new OptionSetValue(RoutingComplete);
-                        parentUpdate[FlowStatus] = new OptionSetValue(FlowComplete);
-                        parentUpdate[ActionWith] = ownerEmail;
-                        parentUpdate[ActionNext] = "None";
-
-                        sysService.Update(parentUpdate);
+                            sysService.Update(parentUpdate);
+                        }
                     }
                 }
             }

@@ -49,6 +49,9 @@ namespace DcoumentRouterPlugins
         // Reviewer Approver lookup fields
         private const string ReviewerLookup = "cr8d2_distributionname";
 
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
         public HandleParallelProgress()
             : base(typeof(HandleParallelProgress))
         {
@@ -114,60 +117,70 @@ namespace DcoumentRouterPlugins
                 // If rejected or completed or Reassigned
                 if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
-
-                    // Get remaining active and value exists in list of values notstarted ispending
-                    QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
+                    if (postDistributionStatus.Value == Reassigned)
                     {
-                        ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
-                        Criteria = new FilterExpression(LogicalOperator.And)
+                        tracer.Trace("Reviewer Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
+
+                        sysService.Update(updateReassignDate);
+                    }
+                    {
+                        tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
+
+                        // Get remaining active and value exists in list of values notstarted ispending
+                        QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
                         {
-                            Conditions =
+                            ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
+                            Criteria = new FilterExpression(LogicalOperator.And)
+                            {
+                                Conditions =
                             {
                                 new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
                                 new ConditionExpression(DistStatus, ConditionOperator.In, NotStarted, IsPending),
                                 new ConditionExpression("statecode", ConditionOperator.Equal, 0)
                             }
-                        }
-                    };
-
-                    EntityCollection remainingReviewers = sysService.RetrieveMultiple(queryremainingReviewers);
-                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
-
-                    if (remainingReviewers.Entities.Count > 0)
-                    {
-                        tracer.Trace($"{remainingReviewers.Entities.Count} remainingReviewers. Updating ActionWith.");
-
-                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
-                        foreach (var rev in remainingReviewers.Entities)
-                        {
-                            var revRef = rev.GetAttributeValue<EntityReference>(ReviewerLookup);
-                            if (revRef != null)
-                            {
-                                pendingNames.Add(revRef.Name);
                             }
+                        };
+
+                        EntityCollection remainingReviewers = sysService.RetrieveMultiple(queryremainingReviewers);
+                        string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+
+                        if (remainingReviewers.Entities.Count > 0)
+                        {
+                            tracer.Trace($"{remainingReviewers.Entities.Count} remainingReviewers. Updating ActionWith.");
+
+                            System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                            foreach (var rev in remainingReviewers.Entities)
+                            {
+                                var revRef = rev.GetAttributeValue<EntityReference>(ReviewerLookup);
+                                if (revRef != null)
+                                {
+                                    pendingNames.Add(revRef.Name);
+                                }
+                            }
+
+
+                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                            parentUpdate[ActionWith] = string.Join(", ", pendingNames);
+                            parentUpdate[ActionNext] = ownerEmail;
+
+                            sysService.Update(parentUpdate);
+                            return;
                         }
+                        else
+                        {
+                            // No additional reviewers found. Review is complete.  
+                            tracer.Trace("No additional reviewers. Review complete");
 
+                            Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+                            parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
+                            parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+                            parentUpdate[ActionWith] = ownerEmail;
+                            parentUpdate[ActionNext] = "Pending";
 
-                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[ActionWith] = string.Join(", ", pendingNames);
-                        parentUpdate[ActionNext] = ownerEmail;
-
-                        sysService.Update(parentUpdate);
-                        return;
-                    }                
-                    else
-                    {
-                        // No additional reviewers found. Review is complete.  
-                        tracer.Trace("No additional reviewers. Review complete");
-
-                        Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[RoutStatus] = new OptionSetValue(ReviewComplete);
-                        parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
-                        parentUpdate[ActionWith] = ownerEmail;
-                        parentUpdate[ActionNext] = "Pending";
-
-                        sysService.Update(parentUpdate);
+                            sysService.Update(parentUpdate);
+                        }
                     }
                 }
             }

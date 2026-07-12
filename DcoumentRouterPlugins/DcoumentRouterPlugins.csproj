@@ -76,13 +76,6 @@
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Runtime.Serialization" />
-    
-    <PackageReference Include="Microsoft.CrmSdk.XrmTooling.CoreAssembly">
-      <Version>9.1.1.65</Version>
-    </PackageReference>
-    <PackageReference Include="Microsoft.PowerPlatform.Dataverse.Client">
-      <Version>1.2.26</Version>
-    </PackageReference>
     <PackageReference Include="Microsoft.VisualBasic">
       <Version>10.3.0</Version>
     </PackageReference>
