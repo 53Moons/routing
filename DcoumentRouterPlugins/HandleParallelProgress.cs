@@ -152,10 +152,7 @@ namespace DcoumentRouterPlugins
 
                     tracer.Trace("Reviewer Completed or Reassigned. Check for pending reviewers.");
 
-                    // Get remaining active and value exists in list of values notstarted ispending
-                    QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
-
-                    // Get remaining active and value exists in list of values notstarted ispending
+                // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
                     {
                         ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),

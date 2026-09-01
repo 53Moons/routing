@@ -119,7 +119,7 @@ namespace DcoumentRouterPlugins
                     // Set to Pending Initiator Action instead of WorkflowTerminated (905200015)
                     parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction); // 905200012
 
-                    // Leave the Routing Status as RejectedByReviewer (905200006) or Approver (905200005)
+                    // Leave the Routing Status as Rejected By Approver (905200005)
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
 
                     // Put the ball back in the Initiator's court

@@ -122,7 +122,7 @@ namespace DcoumentRouterPlugins
                 // If rejected
                 if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Approver Rejected. Pausing Workflow and returning to Owner.");
+                    tracer.Trace("Parallel Approver Rejected. Pausing Workflow and returning to Owner.");
 
                     // Retrieve the owner email to assign it back to them
                     string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
