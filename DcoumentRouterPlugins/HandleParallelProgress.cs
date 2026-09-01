@@ -117,8 +117,29 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected or completed or Reassigned
-                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
+                // if rejected
+               
+                if (postDistributionStatus.Value == Rejected)
+                {
+                    tracer.Trace("Parallel Reviewer Rejected. Pausing Workflow and returning to Owner.");
+
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+
+                    Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+
+                    // Pause the workflow and set routing status to Rejected
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction); // 905200012
+                    parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);     // 905200006
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
+
+                    sysService.Update(parentUpdate);
+                    return; // Exit immediately so it doesn't process remaining reviewers
+                }
+
+                // if completed or reassigned
+              
+                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
                     if (postDistributionStatus.Value == Reassigned)
                     {
@@ -129,7 +150,10 @@ namespace DcoumentRouterPlugins
                         sysService.Update(updateReassignDate);
                     }
 
-                    tracer.Trace("Reviewer Completed, Rejected or Reassigned. Check for pending reviewers.");
+                    tracer.Trace("Reviewer Completed or Reassigned. Check for pending reviewers.");
+
+                    // Get remaining active and value exists in list of values notstarted ispending
+                    QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
 
                     // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)

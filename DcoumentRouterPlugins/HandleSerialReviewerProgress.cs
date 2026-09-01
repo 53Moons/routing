@@ -120,13 +120,22 @@ namespace DcoumentRouterPlugins
                 // If rejected
                 if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Reviewer Rejected. Terminating Workflow.");
+                    tracer.Trace("Reviewer/Approver Rejected. Pausing Workflow and returning to Owner.");
+
+                    // Retrieve the owner email to assign it back to them
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                    parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated (905200015)
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction); // 905200012
+
+                    // Leave the Routing Status as RejectedByReviewer (905200006) or Approver (905200005)
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);
-                    parentUpdate[ActionWith] = "None";
-                    parentUpdate[ActionNext] = "None";
+
+                    // Put the ball back in the Initiator's court
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
 
                     sysService.Update(parentUpdate);
                     return;
