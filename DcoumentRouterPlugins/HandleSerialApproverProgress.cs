@@ -47,6 +47,12 @@ namespace DcoumentRouterPlugins
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleSerialApproverProgressPlugin() : base(typeof(HandleSerialApproverProgressPlugin)) { }
 
         protected override void ExecuteCdsPlugin(ILocalPluginContext localPluginContext)
@@ -90,9 +96,9 @@ namespace DcoumentRouterPlugins
                 var parentReference = postImage.GetAttributeValue<EntityReference>(ParentId);
                 if (parentReference == null)
                     throw new Exception($"Parent routing {ParentId} missing from approver distribution.");
-                
+
                 // Check routing type is serial
-                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType));
+                Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Serial)
 
                 {
@@ -103,23 +109,41 @@ namespace DcoumentRouterPlugins
                 // Handle rejection
                 if (postDistStatus.Value == Rejected)
                 {
-                    tracer.Trace("Approver Rejected. Terminating Workflow.");
+                    tracer.Trace("Approver Rejected. Pausing Workflow and returning to Owner.");
+
+                    // Retrieve the owner email to assign it back to them
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                    parentUpdate[FlowStatus] = new OptionSetValue(Terminated);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated (905200015)
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction); // 905200012
+
+                    // Leave the Routing Status as Rejected By Approver (905200005)
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
-                    parentUpdate[ActionWith] = "None";
-                    parentUpdate[ActionNext] = "None";
+
+                    // Put the ball back in the Initiator's court
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
 
                     sysService.Update(parentUpdate);
                     return;
                 }
 
-                // Find next approver if prev complete
+                // Find next approver if prev complete or Reassigned
                 if (postDistStatus.Value == Complete || postDistStatus.Value == Reassigned)
                 {
+                    if (postDistStatus.Value == Reassigned)
+                    {
+                        tracer.Trace("Approver Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ApproverEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
+
+                        sysService.Update(updateReassignDate);
+                    }
+
                     tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
-                // Get next 2 approvers (changed from top count 1)
+                    // Get next 2 approvers (changed from top count 1)
 
                     QueryExpression queryNextApprover = new QueryExpression(ApproverEntityName)
                     {
@@ -146,6 +170,8 @@ namespace DcoumentRouterPlugins
                         Entity nextApproverUpdate = new Entity(ApproverEntityName, nextApprover.Id);
 
                         nextApproverUpdate[DistStatus] = new OptionSetValue(IsPending);
+                        nextApproverUpdate[PendingDate] = DateTime.UtcNow;
+
                         sysService.Update(nextApproverUpdate);
 
                         tracer.Trace("Next approver updated to IsPending.");

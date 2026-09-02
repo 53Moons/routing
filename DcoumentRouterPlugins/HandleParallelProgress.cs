@@ -11,6 +11,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
         private const string DistStatus = "cr8d2_distributionstatus";
 
@@ -47,6 +48,12 @@ namespace DcoumentRouterPlugins
 
         // Reviewer Approver lookup fields
         private const string ReviewerLookup = "cr8d2_distributionname";
+
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
 
         public HandleParallelProgress()
             : base(typeof(HandleParallelProgress))
@@ -87,10 +94,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected)
+                // Verify completed or rejected or reassigned
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
                 }
 
@@ -101,7 +108,7 @@ namespace DcoumentRouterPlugins
                     throw new Exception($"Parent routing summary lookup ({ParentId}) missing from distribution.");
                 }
 
-                // Check routing type is parallel add get owner email
+                // Check routing type is parallel and get owner email
                 Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Parallel)
 
@@ -110,10 +117,43 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected or completed
-                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete)
+                // If rejected (Separated from Complete logic)
+                if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Reviewer Completed or Rejected. Check for pending reviewers.");
+                    tracer.Trace("Reviewer Rejected. Pausing Workflow and returning to Owner.");
+
+                    // Retrieve the owner email to assign it back to them
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
+
+                    Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+
+                    // Leave the Routing Status as Rejected By Reviewer
+                    parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);
+
+                    // Put the ball back in the Initiator's court
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
+
+                    sysService.Update(parentUpdate);
+                    return;
+                }
+
+                // If completed or reassigned
+                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
+                {
+                    if (postDistributionStatus.Value == Reassigned)
+                    {
+                        tracer.Trace("Reviewer Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
+
+                        sysService.Update(updateReassignDate);
+                    }
+
+                    tracer.Trace("Reviewer Completed or Reassigned. Check for pending reviewers.");
 
                     // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
@@ -138,6 +178,8 @@ namespace DcoumentRouterPlugins
                         tracer.Trace($"{remainingReviewers.Entities.Count} remainingReviewers. Updating ActionWith.");
 
                         System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        var updates = new EntityCollection { EntityName = ChildEntityName };
+
                         foreach (var rev in remainingReviewers.Entities)
                         {
                             var revRef = rev.GetAttributeValue<EntityReference>(ReviewerLookup);
@@ -145,8 +187,24 @@ namespace DcoumentRouterPlugins
                             {
                                 pendingNames.Add(revRef.Name);
                             }
+
+                            // If a reviewer was Not Started (e.g., added mid-flight), set them to Pending and stamp the date
+                            var revStatus = rev.GetAttributeValue<OptionSetValue>(DistStatus);
+                            if (revStatus != null && revStatus.Value == NotStarted)
+                            {
+                                Entity updateRev = new Entity(ChildEntityName, rev.Id);
+                                updateRev[DistStatus] = new OptionSetValue(IsPending);
+                                updateRev[PendingDate] = DateTime.UtcNow;
+                                updates.Entities.Add(updateRev);
+                            }
                         }
 
+                        // Execute batch update for any new Pending dates
+                        if (updates.Entities.Count > 0)
+                        {
+                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
+                            sysService.Execute(updateRequest);
+                        }
 
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                         parentUpdate[ActionWith] = string.Join(", ", pendingNames);
@@ -154,7 +212,7 @@ namespace DcoumentRouterPlugins
 
                         sysService.Update(parentUpdate);
                         return;
-                    }                
+                    }
                     else
                     {
                         // No additional reviewers found. Review is complete.  
@@ -175,10 +233,6 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleParallelProgress: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-
-
-
-
         }
     }
 }

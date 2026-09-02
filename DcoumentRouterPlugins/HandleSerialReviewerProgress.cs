@@ -11,6 +11,7 @@ namespace DcoumentRouterPlugins
         private const int NotStarted = 905200000;
         private const int IsPending = 905200001;
         private const int Complete = 905200002;
+        private const int Reassigned = 905200004;
         private const int Rejected = 905200005;
         private const string DistStatus = "cr8d2_distributionstatus";
 
@@ -32,7 +33,7 @@ namespace DcoumentRouterPlugins
 
         // Entity References
         private const string ParentEntityName = "cr8d2_routingsummary";
-        private const string ChildEntityName = "cr8d2_documentrouterdecision";     
+        private const string ChildEntityName = "cr8d2_documentrouterdecision";
 
         // Handle Order
         private const string ParentId = "cr8d2_routingsummary";
@@ -43,10 +44,16 @@ namespace DcoumentRouterPlugins
         private const string ActionNext = "cr8d2_actionnext";
 
         // Reviewer Approver lookup fields
-        private const string ReviewerLookup = "cr8d2_distributionname";      
+        private const string ReviewerLookup = "cr8d2_distributionname";
 
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
+
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
 
         public HandleSerialReviewerProgressPlugin()
             : base(typeof(HandleSerialReviewerProgressPlugin))
@@ -87,10 +94,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected)
+                // Verify completed or rejected or Reassigned
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
                 }
 
@@ -104,7 +111,6 @@ namespace DcoumentRouterPlugins
                 // Check routing type is serial and get owner email  
                 Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Serial)
-
                 {
                     tracer.Trace("Routing Type is not Serial. Exiting.");
                     return;
@@ -113,22 +119,40 @@ namespace DcoumentRouterPlugins
                 // If rejected
                 if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Reviewer Rejected. Terminating Workflow.");
+                    tracer.Trace("Reviewer Rejected. Pausing Workflow and returning to Owner.");
+
+                    // Retrieve the owner email to assign it back to them
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                    parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated (905200015)
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction); // 905200012
+
+                    // Leave the Routing Status as Rejected By Reviewer (905200006) 
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);
-                    parentUpdate[ActionWith] = "None";
-                    parentUpdate[ActionNext] = "None";
+
+                    // Put the ball back in the Initiator's court
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
 
                     sysService.Update(parentUpdate);
                     return;
                 }
 
-                // If completed
-                if (postDistributionStatus.Value == Complete)
+                // If Completed or Reassigned
+                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Reviewer Completed. Finding next reviewer.");
+                    if (postDistributionStatus.Value == Reassigned)
+                    {
+                        tracer.Trace("Reviewer Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
+
+                        sysService.Update(updateReassignDate);
+                    }
+
+                    tracer.Trace("Reviewer Completed or Reassigned. Finding next reviewer.");
 
                     // Get next reviewer - updated to pull 2 for action with and action next
                     QueryExpression queryNextReviewer = new QueryExpression(ChildEntityName)
@@ -158,6 +182,8 @@ namespace DcoumentRouterPlugins
                         Entity updateReviewer = new Entity(ChildEntityName, nextReviewer.Id);
 
                         updateReviewer[DistStatus] = new OptionSetValue(IsPending);
+                        updateReviewer[PendingDate] = DateTime.UtcNow;
+
                         sysService.Update(updateReviewer);
 
                         tracer.Trace("Next reviewer updated to IsPending.");
@@ -208,15 +234,11 @@ namespace DcoumentRouterPlugins
                     }
                 }
             }
-
             catch (Exception ex)
             {
                 tracer.Trace($"Error in HandleSerialReviewerProgressPlugin: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-            }
-
-
-
         }
     }
+}

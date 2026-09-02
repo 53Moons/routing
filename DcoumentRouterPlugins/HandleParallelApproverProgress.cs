@@ -2,7 +2,7 @@
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using System;
-using System.Diagnostics.Tracing;
+using System.Collections.Generic;
 
 namespace DcoumentRouterPlugins
 {
@@ -45,11 +45,17 @@ namespace DcoumentRouterPlugins
         private const string ActionWith = "cr8d2_actionwith";
         private const string ActionNext = "cr8d2_actionnext";
 
-        // Approver lookup field
-        private const string ApproverLookup = "cr8d2_managername";
-
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
+
+        // Approver lookup fields
+        private const string ApproverLookup = "cr8d2_managername";
+
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
 
         public HandleParallelApproverProgress()
             : base(typeof(HandleParallelApproverProgress))
@@ -90,8 +96,8 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Verify completed or rejected
-                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value !=Reassigned)
+                // Verify completed or rejected or reassigned
+                if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
                     tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
                     return;
@@ -104,7 +110,7 @@ namespace DcoumentRouterPlugins
                     throw new Exception($"Parent routing summary lookup ({ParentId}) missing from distribution.");
                 }
 
-                // Check routing type is parallel
+                // Check routing type is parallel and get owner email
                 Entity parent = sysService.Retrieve(ParentEntityName, parentReference.Id, new ColumnSet(RoutType, OwnerEmail));
                 if (!parent.Contains(RoutType) || parent.GetAttributeValue<OptionSetValue>(RoutType).Value != Parallel)
 
@@ -113,28 +119,45 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected
+                // If rejected (Separated from Complete logic)
                 if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Approver Rejected. Terminating Workflow.");
+                    tracer.Trace("Approver Rejected. Pausing Workflow and returning to Owner.");
+
+                    // Retrieve the owner email to assign it back to them
+                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                    parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+
+                    // Leave the Routing Status as Rejected By Approver
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
-                    parentUpdate[ActionWith] = "None";
-                    parentUpdate[ActionNext] = "None";
+
+                    // Put the ball back in the Initiator's court
+                    parentUpdate[ActionWith] = ownerEmail;
+                    parentUpdate[ActionNext] = "Pending Restart";
 
                     sysService.Update(parentUpdate);
                     return;
                 }
 
-                // If completed
+                // If completed or reassigned
                 if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
+                    if (postDistributionStatus.Value == Reassigned)
+                    {
+                        tracer.Trace("Approver Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
 
-                    // Keep checking for IsPending or Complete 
-                    // note: filter expression and condition expression may not work
+                        sysService.Update(updateReassignDate);
+                    }
+
+                    tracer.Trace("Approver Completed or Reassigned. Check for pending approvers.");
+
+                    // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingApprovers = new QueryExpression(ChildEntityName)
                     {
                         ColumnSet = new ColumnSet(DistStatus, ApproverLookup),
@@ -151,12 +174,14 @@ namespace DcoumentRouterPlugins
 
                     EntityCollection remainingApprovers = sysService.RetrieveMultiple(queryremainingApprovers);
                     string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
-                    
+
                     if (remainingApprovers.Entities.Count > 0)
                     {
-                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
-                        
-                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ActionWith.");
+
+                        List<string> pendingNames = new List<string>();
+                        var updates = new EntityCollection { EntityName = ChildEntityName };
+
                         foreach (var app in remainingApprovers.Entities)
                         {
                             var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
@@ -165,15 +190,30 @@ namespace DcoumentRouterPlugins
                                 pendingNames.Add(appRef.Name);
                             }
 
+                            // If an approver was Not Started, set them to Pending and stamp the date
+                            var appStatus = app.GetAttributeValue<OptionSetValue>(DistStatus);
+                            if (appStatus != null && appStatus.Value == NotStarted)
+                            {
+                                Entity updateApp = new Entity(ChildEntityName, app.Id);
+                                updateApp[DistStatus] = new OptionSetValue(IsPending);
+                                updateApp[PendingDate] = DateTime.UtcNow;
+                                updates.Entities.Add(updateApp);
+                            }
+                        }
+
+                        // Execute batch update for any new Pending dates
+                        if (updates.Entities.Count > 0)
+                        {
+                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
+                            sysService.Execute(updateRequest);
                         }
 
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                        parentUpdate[ActionWith] = string.Join(",", pendingNames);
+                        parentUpdate[ActionWith] = string.Join(", ", pendingNames);
                         parentUpdate[ActionNext] = ownerEmail;
 
                         sysService.Update(parentUpdate);
-                        return;                                               
-                      
+                        return;
                     }
                     else
                     {
@@ -195,10 +235,6 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleParallelApproverProgress: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
-
-
-
-
         }
     }
 }
