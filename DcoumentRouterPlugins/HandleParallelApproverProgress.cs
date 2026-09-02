@@ -48,6 +48,15 @@ namespace DcoumentRouterPlugins
         // Owner Email
         private const string OwnerEmail = "cr8d2_owneremail";
 
+        // Approver lookup fields
+        private const string ApproverLookup = "cr8d2_managername";
+
+        // Reassign Confirmation
+        private const string ReassignDate = "cr8d2_reassignedon";
+
+        // Log date time IsPending starts
+        private const string PendingDate = "cr8d2_pendingdate";
+
         public HandleParallelApproverProgress()
             : base(typeof(HandleParallelApproverProgress))
         {
@@ -113,16 +122,18 @@ namespace DcoumentRouterPlugins
                 // If rejected (Separated from Complete logic)
                 if (postDistributionStatus.Value == Rejected)
                 {
-                    tracer.Trace("Approver Rejected. Terminating Workflow.");
+                    tracer.Trace("Approver Rejected. Pausing Workflow and returning to Owner.");
 
                     // Retrieve the owner email to assign it back to them
                     string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
 
                     Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-                    parentUpdate[FlowStatus] = new OptionSetValue(WorkflowTerminated);
+
+                    // Set to Pending Initiator Action instead of WorkflowTerminated
+                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
+
+                    // Leave the Routing Status as Rejected By Approver
                     parentUpdate[RoutStatus] = new OptionSetValue(RejectedByApprover);
-                    parentUpdate[ActionWith] = "None";
-                    parentUpdate[ActionNext] = "None";
 
                     // Put the ball back in the Initiator's court
                     parentUpdate[ActionWith] = ownerEmail;
@@ -135,7 +146,11 @@ namespace DcoumentRouterPlugins
                 // If completed or reassigned
                 if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Approver Completed or Reassigned. Check for other pending approvers.");
+                    if (postDistributionStatus.Value == Reassigned)
+                    {
+                        tracer.Trace("Approver Reassigned. Updating reassigned date.");
+                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
+                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
 
                         sysService.Update(updateReassignDate);
                     }
@@ -162,9 +177,11 @@ namespace DcoumentRouterPlugins
 
                     if (remainingApprovers.Entities.Count > 0)
                     {
-                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ");
-                        
-                        System.Collections.Generic.List<string> pendingNames = new System.Collections.Generic.List<string>();
+                        tracer.Trace($"{remainingApprovers.Entities.Count} remainingApprovers. Updating ActionWith.");
+
+                        List<string> pendingNames = new List<string>();
+                        var updates = new EntityCollection { EntityName = ChildEntityName };
+
                         foreach (var app in remainingApprovers.Entities)
                         {
                             var appRef = app.GetAttributeValue<EntityReference>(ApproverLookup);
@@ -184,6 +201,11 @@ namespace DcoumentRouterPlugins
                             }
                         }
 
+                        // Execute batch update for any new Pending dates
+                        if (updates.Entities.Count > 0)
+                        {
+                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
+                            sysService.Execute(updateRequest);
                         }
 
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
@@ -191,8 +213,7 @@ namespace DcoumentRouterPlugins
                         parentUpdate[ActionNext] = ownerEmail;
 
                         sysService.Update(parentUpdate);
-                        return;                                               
-                      
+                        return;
                     }
                     else
                     {
