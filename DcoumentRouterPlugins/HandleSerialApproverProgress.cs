@@ -106,7 +106,7 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // Handle rejection
+                // If rejected
                 if (postDistStatus.Value == Rejected)
                 {
                     tracer.Trace("Approver Rejected. Pausing Workflow and returning to Owner.");
@@ -133,15 +133,6 @@ namespace DcoumentRouterPlugins
                 // Find next approver if prev complete or Reassigned
                 if (postDistStatus.Value == Complete || postDistStatus.Value == Reassigned)
                 {
-                    if (postDistStatus.Value == Reassigned)
-                    {
-                        tracer.Trace("Approver Reassigned. Updating reassigned date.");
-                        Entity updateReassignDate = new Entity(ApproverEntityName, postImage.Id);
-                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
-
-                        sysService.Update(updateReassignDate);
-                    }
-
                     tracer.Trace("Approver Completed or Reassigned. Finding next Approver.");
                     // Get next 2 approvers (changed from top count 1)
 
@@ -151,11 +142,11 @@ namespace DcoumentRouterPlugins
                         Criteria = new FilterExpression
                         {
                             Conditions =
-                        {
-                            new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
-                            new ConditionExpression(DistStatus, ConditionOperator.Equal, NotStarted),
-                            new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
-                        }
+                            {
+                                new ConditionExpression(ParentId, ConditionOperator.Equal, parentReference.Id),
+                                new ConditionExpression(DistStatus, ConditionOperator.Equal, NotStarted),
+                                new ConditionExpression("statecode", ConditionOperator.Equal, 0) // Active
+                            }
                         },
                         TopCount = 2
                     };

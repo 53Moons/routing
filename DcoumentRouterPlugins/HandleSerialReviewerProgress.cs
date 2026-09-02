@@ -239,6 +239,9 @@ namespace DcoumentRouterPlugins
                 tracer.Trace($"Error in HandleSerialReviewerProgressPlugin: {ex.Message}");
                 throw new InvalidPluginExecutionException(ex.Message, ex);
             }
+            }
+
+
+
         }
     }
-}

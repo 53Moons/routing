@@ -97,7 +97,7 @@ namespace DcoumentRouterPlugins
                 // Verify completed or rejected or reassigned
                 if (postDistributionStatus.Value != Complete && postDistributionStatus.Value != Rejected && postDistributionStatus.Value != Reassigned)
                 {
-                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete, Rejected, or Reassigned. Exiting.");
+                    tracer.Trace($"Distribution status changed to {postDistributionStatus.Value}, which is neither Complete nor Rejected. Exiting.");
                     return;
                 }
 
@@ -117,45 +117,12 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected (Separated from Complete logic)
-                if (postDistributionStatus.Value == Rejected)
+                // If rejected or completed
+                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete)
                 {
-                    tracer.Trace("Reviewer Rejected. Pausing Workflow and returning to Owner.");
+                    tracer.Trace("Reviewer Completed or Rejected. Check for pending reviewers.");
 
-                    // Retrieve the owner email to assign it back to them
-                    string ownerEmail = parent.GetAttributeValue<string>(OwnerEmail);
-
-                    Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
-
-                    // Set to Pending Initiator Action instead of WorkflowTerminated
-                    parentUpdate[FlowStatus] = new OptionSetValue(PendingInitiatorAction);
-
-                    // Leave the Routing Status as Rejected By Reviewer
-                    parentUpdate[RoutStatus] = new OptionSetValue(RejectedByReviewer);
-
-                    // Put the ball back in the Initiator's court
-                    parentUpdate[ActionWith] = ownerEmail;
-                    parentUpdate[ActionNext] = "Pending Restart";
-
-                    sysService.Update(parentUpdate);
-                    return;
-                }
-
-                // If completed or reassigned
-                if (postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
-                {
-                    if (postDistributionStatus.Value == Reassigned)
-                    {
-                        tracer.Trace("Reviewer Reassigned. Updating reassigned date.");
-                        Entity updateReassignDate = new Entity(ChildEntityName, postImage.Id);
-                        updateReassignDate["cr8d2_reassigndate"] = DateTime.UtcNow.ToString("MM/dd/yyyy HH:mm");
-
-                        sysService.Update(updateReassignDate);
-                    }
-
-                    tracer.Trace("Reviewer Completed or Reassigned. Check for pending reviewers.");
-
-                    // Get remaining active and value exists in list of values notstarted ispending
+                // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)
                     {
                         ColumnSet = new ColumnSet(DistStatus, ReviewerLookup),
@@ -187,24 +154,8 @@ namespace DcoumentRouterPlugins
                             {
                                 pendingNames.Add(revRef.Name);
                             }
-
-                            // If a reviewer was Not Started (e.g., added mid-flight), set them to Pending and stamp the date
-                            var revStatus = rev.GetAttributeValue<OptionSetValue>(DistStatus);
-                            if (revStatus != null && revStatus.Value == NotStarted)
-                            {
-                                Entity updateRev = new Entity(ChildEntityName, rev.Id);
-                                updateRev[DistStatus] = new OptionSetValue(IsPending);
-                                updateRev[PendingDate] = DateTime.UtcNow;
-                                updates.Entities.Add(updateRev);
-                            }
                         }
 
-                        // Execute batch update for any new Pending dates
-                        if (updates.Entities.Count > 0)
-                        {
-                            var updateRequest = new UpdateMultipleRequest { Targets = updates };
-                            sysService.Execute(updateRequest);
-                        }
 
                         Entity parentUpdate = new Entity(ParentEntityName, parentReference.Id);
                         parentUpdate[ActionWith] = string.Join(", ", pendingNames);
