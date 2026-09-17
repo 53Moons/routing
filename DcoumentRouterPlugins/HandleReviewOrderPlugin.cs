@@ -58,6 +58,9 @@ namespace DcoumentRouterPlugins
 
             // Get the execution context, service, and tracing service
             var context = localPluginContext.PluginExecutionContext;
+            // Prevent infinite loops after disabling bypassbusinesslogicexecution
+            if(context.Depth > 1)
+                return;
             var service = localPluginContext.CurrentUserService;
             var tracer = localPluginContext.TracingService;
 
@@ -232,7 +235,7 @@ namespace DcoumentRouterPlugins
             var request = new UpdateMultipleRequest() { Targets = updatedCollection };
 
             // Bypass business logic to prevent infinite loops (this plugin won't trigger itself)
-            request.Parameters.Add("BypassBusinessLogicExecution", "CustomSync,CustomAsync");
+            //request.Parameters.Add("BypassBusinessLogicExecution", "CustomSync,CustomAsync");
 
             try
             {
