@@ -117,10 +117,10 @@ namespace DcoumentRouterPlugins
                     return;
                 }
 
-                // If rejected or completed
-                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete)
+                // If rejected or completed or reassigned
+                if (postDistributionStatus.Value == Rejected || postDistributionStatus.Value == Complete || postDistributionStatus.Value == Reassigned)
                 {
-                    tracer.Trace("Reviewer Completed or Rejected. Check for pending reviewers.");
+                    tracer.Trace("Reviewer Completed, Rejected, or Reassigned. Check for pending reviewers.");
 
                 // Get remaining active and value exists in list of values notstarted ispending
                     QueryExpression queryremainingReviewers = new QueryExpression(ChildEntityName)

@@ -64,7 +64,7 @@ namespace DcoumentRouterPlugins
                 var postRoutStatus = postImage.GetAttributeValue<OptionSetValue>(RoutStatus);
 
                 if (preRoutStatus == null || postRoutStatus == null ||
-                    preRoutStatus.Value != ReviewComplete ||
+                    preRoutStatus.Value == RoutedApprover ||
                     postRoutStatus.Value != RoutedApprover)
                 {
                     tracer.Trace("Routing status did not change to RoutedApprover. Exiting.");

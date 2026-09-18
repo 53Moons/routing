@@ -207,14 +207,15 @@ namespace DcoumentRouterPlugins
                         }
                         else
                         {
-                            tracer.Trace("Second reviewer not found");
+                            actionNextName = parent.GetAttributeValue<string>(OwnerEmail);
+                            tracer.Trace("Second reviewer not found.Action Next set to Owner.");
                         }
 
                         Entity parentActionUpdate = new Entity(ParentEntityName, parentReference.Id);
                         parentActionUpdate[ActionWith] = actionWithName;
                         parentActionUpdate[ActionNext] = actionNextName;
                         sysService.Update(parentActionUpdate);
-
+                        
                         tracer.Trace("Parent routing summary updated with action with and action next.");
                     }
                     else
