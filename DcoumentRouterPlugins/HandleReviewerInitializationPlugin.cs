@@ -50,7 +50,7 @@ namespace DcoumentRouterPlugins
                 if (!preImage.TryGetAttributeValue("cr8d2_routingstatus", out OptionSetValue preRoutingStatus))
                     throw new Exception("Routing Status not in Pre Image");
 
-                if (preRoutingStatus.Value == RoutedForReview || postRoutingStatus.Value != RoutedForReview)
+                if (preRoutingStatus.Value != NotRouted || postRoutingStatus.Value != RoutedForReview)
                 {
                     tracer.Trace($"Routing status changed from {preRoutingStatus.Value} to {postRoutingStatus.Value}. Exiting.");
                     return;
